@@ -1,0 +1,20 @@
+
+
+###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
+
+C:\Users\farre\AppData\Local\Temp\comgr-4c236a\input\CompileSource:20:5: error: use of undeclared identifier 'let'
+    let loc_x = get_local_id(0);
+    ^
+C:\Users\farre\AppData\Local\Temp\comgr-4c236a\input\CompileSource:21:5: error: use of undeclared identifier 'let'
+    let loc_y = get_local_id(1);
+    ^
+C:\Users\farre\AppData\Local\Temp\comgr-4c236a\input\CompileSource:23:50: error: use of undeclared identifier 'loc_x'
+    printf("IDS: (%zu, %zu) (%zu, %zu)\n", x, y, loc_x, loc_y);
+                                                 ^
+C:\Users\farre\AppData\Local\Temp\comgr-4c236a\input\CompileSource:23:57: error: use of undeclared identifier 'loc_y'
+    printf("IDS: (%zu, %zu) (%zu, %zu)\n", x, y, loc_x, loc_y);
+                                                        ^
+4 errors generated.
+Error: Failed to compile source (from CL or HIP source to LLVM IR).
+###############################################################################
+
