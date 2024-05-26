@@ -110,7 +110,7 @@ impl Network {
             .len(weight_offset)
             .build().expect("Failed to make input buffer");
         // Init network's weights randomly using GPU
-        // randomize_buffer(&weight_buf, 256, &pro_que);
+        randomize_buffer(&weight_buf, 256, &pro_que);
 
         let biases_buf: Buffer<f64> = Buffer::builder()
             .queue(queue.clone())
@@ -159,6 +159,12 @@ impl Network {
 
             let layer_buf = &self.gpu_layer_bufs[i];
 
+            let counter: Buffer<i32> = Buffer::builder()
+                .queue(self.gpu_proque.queue().clone())
+                .len(1)
+                .build()
+                .expect("Failed to make counter buf");
+
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
                 .kernel_builder("forward")
@@ -166,6 +172,7 @@ impl Network {
                 .arg(layer_size)
                 .arg(weights_offset)
                 .arg(biases_offset)
+                .arg(counter)
                 .arg(&self.gpu_weights)
                 .arg(&self.gpu_biases)
                 .arg(buf)
@@ -176,8 +183,36 @@ impl Network {
             println!("Created layer kernel {:?}", st.elapsed());
             st = Instant::now();
 
+            let activation_kernel = self.gpu_proque
+                .kernel_builder("activation")
+                .arg(layer_buf)
+                .build().unwrap();
+
+            println!("Created activation kernel {:?}", st.elapsed());
+            st = Instant::now();
+
+            let set_biases_kernel = self.gpu_proque
+                .kernel_builder("set_biases")
+                .arg(layer_buf)
+                .arg(&self.gpu_biases)
+                .arg(biases_offset)
+                .build().unwrap();
+
+            println!("Created set_biases kernel {:?}", st.elapsed());
+            st = Instant::now();
+
             unsafe {
+                let wg_size_1d = calculate_worksize(max_wg as i32, layer_size);
                 let wg_size = (calculate_worksize((max_wg as f32).sqrt() as i32, layer_size), calculate_worksize((max_wg as f32).sqrt() as i32, layer_in_size));
+                // set_biases_kernel
+                //     .cmd()
+                    // .global_work_size(layer_size)
+                    // .local_work_size(wg_size_1d)
+                    // .enq()
+                    // .expect("Failed to enqueue set_biases kernel");
+
+                // println!("Enqueued set_biases kernel ({}) {:?}", wg_size_1d, st.elapsed());
+                // st = Instant::now();
 
                 forward_kernel
                     .cmd()
@@ -188,6 +223,16 @@ impl Network {
 
                 println!("Enqueued layer kernel {:?} {:?}", wg_size, st.elapsed());
                 st = Instant::now();
+
+                // activation_kernel
+                //     .cmd()
+                //     .global_work_size(layer_size)
+                //     .local_work_size(wg_size_1d)
+                //     .enq()
+                //     .expect("Failed to enqueue activation kernel");
+                //
+                // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
+                // st = Instant::now();
             }
 
             layer_in_size = self.layers[i].0;

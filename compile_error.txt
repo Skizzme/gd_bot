@@ -2,14 +2,18 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-951eae\input\CompileSource:29:41: error: use of undeclared identifier 'layer_len'; did you mean 'layer_length'?
-    printf("x: %zu, layer_len: %zu", x, layer_len);
-                                        ^~~~~~~~~
-                                        layer_length
-C:\Users\farre\AppData\Local\Temp\comgr-951eae\input\CompileSource:20:45: note: 'layer_length' declared here
-__kernel void forward(int input_length, int layer_length, int weights_offset, int biases_offset, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
-                                            ^
-1 error generated.
+C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:29:57: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("x %d y %d counter %zu la %d in %d\n", x, y, counter[0], layer_len, input_length);
+                              ~~~                       ^~~~~~~~~~
+                              %d
+C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:32:33: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+        printf("counter %zu\n", counter[0]);
+                        ~~~     ^~~~~~~~~~
+                        %d
+C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:33:27: error: expected expression
+        if (counter[0] == )
+                          ^
+2 warnings and 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

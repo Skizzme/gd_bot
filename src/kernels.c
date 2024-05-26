@@ -15,19 +15,32 @@ double sigmoid(double val) {
     return 1 / (1 + exp(-val));
 }
 
-__kernel void forward(int input_length, int layer_len, int weights_offset, int biases_offset, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
+__kernel void forward(int input_length, int layer_len, int weights_offset, int biases_offset, __global int* counter, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
     int x = get_global_id(0);
     int y = get_global_id(1);
-    // printf("pos: (%zu, %zu), w_offset: %zu, node_input: %f, w_ind: %zu", x, y, weights_offset, input[y], (input_length*x)+y + weights_offset);
     atomicAdd_g_f(&output[x], input[y]*weights[(input_length*x)+y + weights_offset]);
+    barrier(CLK_GLOBAL_MEM_FENCE);
     if (y == 0) {
         atomicAdd_g_f(&output[x], biases[y]);
     }
-    barrier(CLK_GLOBAL_MEM_FENCE);
-//    printf("x: %zu, y: %zu, input_length: %zu, layer_len: %zu", x, y, input_length, layer_len);
-    if (y == layer_len-1) {
+//    barrier(CLK_LOCAL_MEM_FENCE);
+    int added = atom_add(counter, 1);
+//    added = ;
+//    if (y == input_length-1) {
+//        printf("inc\n");
+//    }
+    int comp = input_length*layer_len-layer_len;
+    printf("x %d y %d counter %zu added %zu comp %zu la %d in %d\n", x, y, counter[0], added, comp, layer_len, input_length);
+    if (added >= comp) {
+//        if (counter[0] == )
+//        printf("x %d y %d la %d in %d", x, y, layer_len, input_length);
         output[x] = sigmoid(output[x]);
     }
+}
+
+__kernel void set_biases(__global double* buffer, __constant double* biases, int offset) {
+    int i = get_global_id(0);
+    buffer[i] = biases[i+offset];
 }
 
 __kernel void random_buf(__global double* buffer, ulong randoms) {
@@ -36,6 +49,11 @@ __kernel void random_buf(__global double* buffer, ulong randoms) {
     float res = ((float) result) / 4294967295.0;
     res = (res - 0.5) / 5.0;
     buffer[i] = 1.0;
+}
+
+__kernel void activation(__global double* values) {
+    int i = get_global_id(0);
+    values[i] = sigmoid(values[i]);
 }
 
 __kernel void error(__constant double* values, __constant double* target, __global double* error) {
