@@ -11,7 +11,7 @@ void atomicAdd_g_f(volatile __global double *addr, double val) {
     } while( current.u64 != expected.u64 );
 }
 
-__kernel void layer(int layer_id, int input_length, int weights_offset, __constant double* weights, __constant double* input, __global double* output) {
+__kernel void forward(int layer_id, int input_length, int weights_offset, __constant double* weights, __constant double* input, __global double* output) {
     int x = get_global_id(0);
     int y = get_global_id(1);
     int w_index = (input_length*x)+y + weights_offset;
@@ -27,4 +27,9 @@ double sigmoid(double val) {
 __kernel void activation(__global double* values) {
     int i = get_global_id(0);
     values[i] = sigmoid(values[i]);
+}
+
+__kernel void error(__constant double* values, __constant double* target, __global double* error) {
+    int i = get_global_id(0);
+    error[i] = target[i]-values[i];
 }

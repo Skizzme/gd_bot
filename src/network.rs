@@ -25,7 +25,7 @@ impl Network {
     pub fn new(layers: Vec<i32>, init_weights: Option<Vec<f64>>, init_biases: Option<Vec<f64>>) -> Result<Self, String> {
         let mut st = Instant::now();
         println!("Creating network...");
-        let src = read_to_string("src\\test_comp").unwrap();
+        let src = read_to_string("src\\kernels").unwrap();
         let pro_que = ProQue::builder().src(src).build();
         if pro_que.is_err() {
             std::fs::write("compile_error.txt", pro_que.err().unwrap().to_string()).expect("failed to write error");
@@ -126,8 +126,8 @@ impl Network {
             println!("Initialized layer output {:?}", st.elapsed());
             st = Instant::now();
 
-            let layer_kernel = self.gpu_proque
-                .kernel_builder("layer")
+            let forward_kernel = self.gpu_proque
+                .kernel_builder("forward")
                 .arg(i as i32)
                 .arg(layer_in_size)
                 .arg(weights_offset)
@@ -146,7 +146,7 @@ impl Network {
             st = Instant::now();
 
             unsafe {
-                layer_kernel
+                forward_kernel
                     .cmd()
                     .global_work_size((layer_size, layer_in_size))
                     .local_work_size((work_size.min(layer_size.min(layer_in_size)), work_size.min(layer_size.min(layer_in_size))))
