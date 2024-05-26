@@ -2,18 +2,19 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:29:57: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("x %d y %d counter %zu la %d in %d\n", x, y, counter[0], layer_len, input_length);
-                              ~~~                       ^~~~~~~~~~
-                              %d
-C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:32:33: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-        printf("counter %zu\n", counter[0]);
-                        ~~~     ^~~~~~~~~~
-                        %d
-C:\Users\farre\AppData\Local\Temp\comgr-049552\input\CompileSource:33:27: error: expected expression
-        if (counter[0] == )
-                          ^
-2 warnings and 1 error generated.
+C:\Users\farre\AppData\Local\Temp\comgr-10e585\input\CompileSource:20:30: error: '__private size_t' (aka '__private unsigned long') cannot be used as the type of a kernel parameter
+__kernel void forward(size_t input_length, size_t layer_len, int weights_offset, int biases_offset, __global int* counter, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
+                             ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:82:23: note: '__private size_t' (aka '__private unsigned long') declared here
+typedef __SIZE_TYPE__ size_t;
+                      ^
+C:\Users\farre\AppData\Local\Temp\comgr-10e585\input\CompileSource:20:51: error: '__private size_t' (aka '__private unsigned long') cannot be used as the type of a kernel parameter
+__kernel void forward(size_t input_length, size_t layer_len, int weights_offset, int biases_offset, __global int* counter, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
+                                                  ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:82:23: note: '__private size_t' (aka '__private unsigned long') declared here
+typedef __SIZE_TYPE__ size_t;
+                      ^
+2 errors generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

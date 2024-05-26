@@ -1,7 +1,6 @@
-use std::fs::read_to_string;
 use std::time::Instant;
-use num_format::Locale::{qu, si};
-use ocl::{Buffer, ProQue, Queue};
+
+use ocl::{Buffer, ProQue};
 use rand::random;
 
 #[derive(Debug)]
@@ -9,11 +8,11 @@ pub struct Network {
     // Layer weights are flat, not a matrix
     // weights: Vec<f64>,
     // biases: Vec<f64>,
-    weights: i32,
-    biases: i32,
+    weights: usize,
+    biases: usize,
     // Each layer size. First item is the inputs to the network
     // nodes, weights_offset, biases_offset
-    layers: Vec<(i32, i32, i32)>,
+    layers: Vec<(usize, usize, usize)>,
 
     gpu_proque: ProQue,
     // A single buffer containing all the weights/biases, so fewer calls to gpu
@@ -25,7 +24,7 @@ pub struct Network {
     gpu_layer_bufs: Vec<Buffer<f64>>,
 }
 
-pub fn randomize_buffer(buffer: &Buffer<f64>, max_work_size: i32, pro_que: &ProQue) {
+pub fn randomize_buffer(buffer: &Buffer<f64>, max_work_size: u32, pro_que: &ProQue) {
     let rnd_kernel = pro_que
         .kernel_builder("random_buf")
         .arg(buffer)
@@ -37,13 +36,13 @@ pub fn randomize_buffer(buffer: &Buffer<f64>, max_work_size: i32, pro_que: &ProQ
         rnd_kernel
             .cmd()
             .global_work_size(buffer.len())
-            .local_work_size(calculate_worksize(max_work_size, buffer.len() as i32))
+            .local_work_size(calculate_worksize(max_work_size as usize, buffer.len()))
             .enq()
             .expect("Failed to enq rnd_kernel")
     }
 }
 
-pub fn calculate_worksize(max: i32, size: i32) -> i32 {
+pub fn calculate_worksize(max: usize, size: usize) -> usize {
     let mut calc = 1;
     for i in 1..max+1 {
         if size as f32 / i as f32 == (size / i) as f32 {
@@ -54,7 +53,7 @@ pub fn calculate_worksize(max: i32, size: i32) -> i32 {
 }
 
 impl Network {
-    pub fn new(layers: Vec<i32>, init_weights: Option<Vec<f64>>, init_biases: Option<Vec<f64>>) -> Result<Self, String> {
+    pub fn new(layers: Vec<usize>, init_weights: Option<Vec<f64>>, init_biases: Option<Vec<f64>>) -> Result<Self, String> {
         let mut st = Instant::now();
         println!("Creating network...");
         let src = include_str!("kernels.c");
@@ -82,8 +81,8 @@ impl Network {
                                .build().expect("Failed to make input buffer"));
         network_layers.push((layers[0], 0, 0));
 
-        let mut weight_offset = 0;
-        let mut bias_offset = 0;
+        let mut weight_offset = 0usize;
+        let mut bias_offset = 0usize;
         // First value would be the plain inputs, so start creating layers with sizes after
         for i in 1..layers.len() {
             let layer_size = *layers.get(i).unwrap();
@@ -168,10 +167,10 @@ impl Network {
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
                 .kernel_builder("forward")
-                .arg(layer_in_size)
-                .arg(layer_size)
-                .arg(weights_offset)
-                .arg(biases_offset)
+                .arg(layer_in_size as u64)
+                .arg(layer_size as u64)
+                .arg(weights_offset as u64)
+                .arg(biases_offset as u64)
                 .arg(counter)
                 .arg(&self.gpu_weights)
                 .arg(&self.gpu_biases)
@@ -191,28 +190,9 @@ impl Network {
             println!("Created activation kernel {:?}", st.elapsed());
             st = Instant::now();
 
-            let set_biases_kernel = self.gpu_proque
-                .kernel_builder("set_biases")
-                .arg(layer_buf)
-                .arg(&self.gpu_biases)
-                .arg(biases_offset)
-                .build().unwrap();
-
-            println!("Created set_biases kernel {:?}", st.elapsed());
-            st = Instant::now();
-
             unsafe {
-                let wg_size_1d = calculate_worksize(max_wg as i32, layer_size);
-                let wg_size = (calculate_worksize((max_wg as f32).sqrt() as i32, layer_size), calculate_worksize((max_wg as f32).sqrt() as i32, layer_in_size));
-                // set_biases_kernel
-                //     .cmd()
-                    // .global_work_size(layer_size)
-                    // .local_work_size(wg_size_1d)
-                    // .enq()
-                    // .expect("Failed to enqueue set_biases kernel");
-
-                // println!("Enqueued set_biases kernel ({}) {:?}", wg_size_1d, st.elapsed());
-                // st = Instant::now();
+                let wg_size_1d = calculate_worksize(max_wg, layer_size);
+                let wg_size = (calculate_worksize((max_wg as f32).sqrt() as usize, layer_size), calculate_worksize((max_wg as f32).sqrt() as usize, layer_in_size));
 
                 forward_kernel
                     .cmd()
@@ -224,15 +204,15 @@ impl Network {
                 println!("Enqueued layer kernel {:?} {:?}", wg_size, st.elapsed());
                 st = Instant::now();
 
-                // activation_kernel
-                //     .cmd()
-                //     .global_work_size(layer_size)
-                //     .local_work_size(wg_size_1d)
-                //     .enq()
-                //     .expect("Failed to enqueue activation kernel");
-                //
-                // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
-                // st = Instant::now();
+                activation_kernel
+                    .cmd()
+                    .global_work_size(layer_size)
+                    .local_work_size(wg_size_1d)
+                    .enq()
+                    .expect("Failed to enqueue activation kernel");
+
+                println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
+                st = Instant::now();
             }
 
             layer_in_size = self.layers[i].0;
@@ -247,15 +227,15 @@ impl Network {
         Ok(final_out)
     }
 
-    pub fn layers(&self) -> &Vec<(i32, i32, i32)> {
+    pub fn layers(&self) -> &Vec<(usize, usize, usize)> {
         &self.layers
     }
 
 
-    pub fn weights(&self) -> i32 {
+    pub fn weights(&self) -> usize {
         self.weights
     }
-    pub fn biases(&self) -> i32 {
+    pub fn biases(&self) -> usize {
         self.biases
     }
 }
