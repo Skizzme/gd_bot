@@ -35,7 +35,7 @@ impl Network {
         let queue = pro_que.queue();;
         println!("Compiled kernels {:?}", st.elapsed());
 
-        println!("Initializing layers...");
+        println!("\nInitializing layers...");
         st = Instant::now();
         let mut network_layers = vec![];
         let mut layer_buffers = vec![];
@@ -53,7 +53,7 @@ impl Network {
         let mut bias_offset = 0;
         // First value would be the plain inputs, so start creating layers with sizes after
         for i in 1..layers.len() {
-            println!("Initializing layer {:?} {:?}", i, st.elapsed());
+            println!("\nInitializing layer {:?} {:?}", i, st.elapsed());
             st = Instant::now();
             let layer_size = *layers.get(i).unwrap();
 
@@ -70,6 +70,7 @@ impl Network {
                 }
                 network_biases.push((random::<f64>()*2.0-1.0)/5.0);
             }
+            println!("Created initial weights/biases {:?}", st.elapsed());
 
             network_layers.push((layer_size, weight_offset, bias_offset));
 
@@ -81,7 +82,7 @@ impl Network {
         }
 
         st = Instant::now();
-        println!("Storing network weights on GPU...");
+        println!("\nStoring network weights on GPU...");
         let weight_buf: Buffer<f64> = Buffer::builder()
             .queue(queue.clone())
             .len(network_weights.len())
@@ -89,7 +90,7 @@ impl Network {
         // Write all layers' weights to a single buffer
 
         weight_buf.write(network_weights.as_slice()).enq().expect("Failed to write network weights");
-        println!("Stored network weights on GPU {:?}", st.elapsed());
+        println!("Stored network weights on GPU {:?}\n", st.elapsed());
         st = Instant::now();
 
         let mut network = Network {
@@ -114,7 +115,7 @@ impl Network {
         let mut st = Instant::now();
         let mut buf = &self.gpu_layer_bufs[0];
         buf.write(inputs.as_slice()).enq().expect("Failed to write network inputs");
-        println!("Initialized network input {:?}", st.elapsed());
+        println!("\nInitialized network input {:?}", st.elapsed());
         st = Instant::now();
         for i in 1..self.layers.len() {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
@@ -151,7 +152,7 @@ impl Network {
                     .local_work_size((work_size.min(layer_size.min(layer_in_size)), work_size.min(layer_size.min(layer_in_size))))
                     .enq()
                     .expect("Failed to enqueue layer kernel");
-                println!("Enqueued layer kernel {:?}", st.elapsed());
+                println!("Enqueued layer kernel {:?} {:?}", (work_size.min(layer_size.min(layer_in_size)),work_size.min(layer_size.min(layer_in_size))), st.elapsed());
                 st = Instant::now();
                 activation_kernel
                     .cmd()
@@ -159,7 +160,7 @@ impl Network {
                     .local_work_size(work_size.min(layer_size.min(layer_in_size)))
                     .enq()
                     .expect("Failed to enqueue activation kernel");
-                println!("Enqueued activation kernel {:?}", st.elapsed());
+                println!("Enqueued activation kernel ({}) {:?}", work_size.min(layer_size.min(layer_in_size)), st.elapsed());
                 st = Instant::now();
             }
 
