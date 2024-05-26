@@ -2,16 +2,16 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-d4b932\input\CompileSource:13:23: error: call to 'atomic_cmpxchg' is ambiguous
-        current.u32 = atomic_cmpxchg((volatile __global ulong *)addr, expected.u32, next.u32);
-                      ^~~~~~~~~~~~~~
-C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:13783:12: note: candidate function
-int __ovld atomic_cmpxchg(volatile __global int *, int, int);
-           ^
-C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:13784:13: note: candidate function
-uint __ovld atomic_cmpxchg(volatile __global uint *, uint, uint);
-            ^
-1 error generated.
+C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:21:5: error: use of undeclared identifier 'let'
+    let w = weights[w_index];
+    ^
+C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:22:128: error: use of undeclared identifier 'w'
+    printf("LAYER: %zu, pos: (%zu, %zu), w_offset: %zu, node_input: %f, weight: %f", layer_id, x, y, weights_offset, input[y], w);
+                                                                                                                               ^
+C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:23:40: error: use of undeclared identifier 'w'
+    atomicAdd_g_f(&output[x], input[y]*w);
+                                       ^
+3 errors generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

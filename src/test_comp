@@ -12,9 +12,11 @@ void atomicAdd_g_f(volatile __global double *addr, double val) {
     } while( current.u32 != expected.u32 );
 }
 
-__kernel void layer(int x_size, int y_size, __constant double* weights, __constant double* input, __global double* output) {
+__kernel void layer(int layer_id, int input_length, int weights_offset, __constant double* weights, __constant double* input, __global double* output) {
     int x = get_global_id(0);
     int y = get_global_id(1);
-    int w_index = (y_size*x)+y;
-    atomicAdd_g_f(&output[x], input[y]*weights[w_index]);
+    int w_index = (input_length*x)+y + weights_offset;
+    double w = weights[w_index];
+    // printf("LAYER: %zu, pos: (%zu, %zu), w_offset: %zu, node_input: %f, w: %f, w_ind: %zu", layer_id, x, y, weights_offset, input[y], w, w_index);
+    atomicAdd_g_f(&output[x], input[y]*w);
 }
