@@ -2,16 +2,17 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:21:5: error: use of undeclared identifier 'let'
-    let w = weights[w_index];
-    ^
-C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:22:128: error: use of undeclared identifier 'w'
-    printf("LAYER: %zu, pos: (%zu, %zu), w_offset: %zu, node_input: %f, weight: %f", layer_id, x, y, weights_offset, input[y], w);
-                                                                                                                               ^
-C:\Users\farre\AppData\Local\Temp\comgr-52356d\input\CompileSource:23:40: error: use of undeclared identifier 'w'
-    atomicAdd_g_f(&output[x], input[y]*w);
-                                       ^
-3 errors generated.
+C:\Users\farre\AppData\Local\Temp\comgr-491d53\input\CompileSource:19:21: error: use of undeclared identifier 'power'; did you mean 'powr'?
+    return 1 / (1 + power(e, -val));
+                    ^~~~~
+                    powr
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:8792:22: note: 'powr' declared here
+half16 __ovld __cnfn powr(half16, half16 );
+                     ^
+C:\Users\farre\AppData\Local\Temp\comgr-491d53\input\CompileSource:19:12: error: returning 'half16' (vector of 16 'half' values) from a function with incompatible result type 'double'
+    return 1 / (1 + power(e, -val));
+           ^~~~~~~~~~~~~~~~~~~~~~~~
+2 errors generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

@@ -23,7 +23,8 @@ pub struct Network {
 
 impl Network {
     pub fn new(layers: Vec<i32>, init_weights: Option<Vec<f64>>, init_biases: Option<Vec<f64>>) -> Result<Self, String> {
-        println!("Compiling kernel");
+        let mut st = Instant::now();
+        println!("Creating network...");
         let src = read_to_string("src\\test_comp").unwrap();
         let pro_que = ProQue::builder().src(src).build();
         if pro_que.is_err() {
@@ -31,9 +32,11 @@ impl Network {
             return Err("Compile error. Check 'compile_error.txt'".to_string());
         }
         let pro_que = pro_que.unwrap();
-        let queue = pro_que.queue();
+        let queue = pro_que.queue();;
+        println!("Compiled kernels {:?}", st.elapsed());
 
-        println!("Initializing layers");
+        println!("Initializing layers...");
+        st = Instant::now();
         let mut network_layers = vec![];
         let mut layer_buffers = vec![];
         let mut network_weights = vec![];
@@ -50,6 +53,8 @@ impl Network {
         let mut bias_offset = 0;
         // First value would be the plain inputs, so start creating layers with sizes after
         for i in 1..layers.len() {
+            println!("Initializing layer {:?} {:?}", i, st.elapsed());
+            st = Instant::now();
             let layer_size = *layers.get(i).unwrap();
 
             let layer: Buffer<f64> = Buffer::builder()
@@ -60,10 +65,10 @@ impl Network {
 
             // Init weights/biases
             for j in 0..layer_size {
-                for k in 0..layer_inputs {
-                    network_weights.push(random::<f64>()-0.5f64)
+                for k in 0..layer_inputs {// random::<f64>()*2.0-1.0
+                    network_weights.push((random::<f64>()*2.0-1.0)/5.0);
                 }
-                network_biases.push(random::<f64>()-0.5f64);
+                network_biases.push((random::<f64>()*2.0-1.0)/5.0);
             }
 
             network_layers.push((layer_size, weight_offset, bias_offset));
@@ -75,7 +80,8 @@ impl Network {
             layer_inputs = layer_size;
         }
 
-        println!("Storing network weights on GPU");
+        st = Instant::now();
+        println!("Storing network weights on GPU...");
         let weight_buf: Buffer<f64> = Buffer::builder()
             .queue(queue.clone())
             .len(network_weights.len())
@@ -83,6 +89,8 @@ impl Network {
         // Write all layers' weights to a single buffer
 
         weight_buf.write(network_weights.as_slice()).enq().expect("Failed to write network weights");
+        println!("Stored network weights on GPU {:?}", st.elapsed());
+        st = Instant::now();
 
         let mut network = Network {
             weights: network_weights,
@@ -96,7 +104,7 @@ impl Network {
         Ok(network)
     }
 
-    pub fn forward(&self, mut inputs: Vec<f64>, work_size: i32) -> Result<Vec<f64>, String> { // Will return proper error later
+    pub fn calculate(&self, mut inputs: Vec<f64>, work_size: i32) -> Result<Vec<f64>, String> { // Will return proper error later
         let mut layer_in_size = self.layers[0].0;
 
         if inputs.len() != layer_in_size as usize {
@@ -110,7 +118,7 @@ impl Network {
         st = Instant::now();
         for i in 1..self.layers.len() {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
-            println!("Forwarding layer: {:?}. size: {:?}, weight_offset: {:?}, bias_offset: {:?}", i, layer_size, weights_offset, biases_offset);
+            println!("\nForwarding layer: {:?}. size: {:?}, weight_offset: {:?}, bias_offset: {:?}", i, layer_size, weights_offset, biases_offset);
             let layer_buf = &self.gpu_layer_bufs[i];
             let biases = self.biases[biases_offset as usize..(biases_offset+layer_size) as usize].iter().as_slice();
             layer_buf.write(biases).enq().expect("Failed to set layer input buffer");
@@ -129,17 +137,31 @@ impl Network {
                 .unwrap();
             println!("Created layer kernel {:?}", st.elapsed());
             st = Instant::now();
+            let activation_kernel = self.gpu_proque
+                .kernel_builder("activation")
+                .arg(layer_buf)
+                .build().unwrap();
+            println!("Created activation kernel {:?}", st.elapsed());
+            st = Instant::now();
 
             unsafe {
                 layer_kernel
                     .cmd()
                     .global_work_size((layer_size, layer_in_size))
-                    .local_work_size((16, 16))
+                    .local_work_size((work_size.min(layer_size.min(layer_in_size)), work_size.min(layer_size.min(layer_in_size))))
                     .enq()
-                    .expect("Failed to enqueue kernel");
+                    .expect("Failed to enqueue layer kernel");
+                println!("Enqueued layer kernel {:?}", st.elapsed());
+                st = Instant::now();
+                activation_kernel
+                    .cmd()
+                    .global_work_size(layer_size)
+                    .local_work_size(work_size.min(layer_size.min(layer_in_size)))
+                    .enq()
+                    .expect("Failed to enqueue activation kernel");
+                println!("Enqueued activation kernel {:?}", st.elapsed());
+                st = Instant::now();
             }
-            println!("Enqueued layer kernel {:?}", st.elapsed());
-            st = Instant::now();
 
             layer_in_size = self.layers[i].0;
             buf = layer_buf;
@@ -147,12 +169,11 @@ impl Network {
 
         let mut final_out = vec![0f64; self.layers.get(self.layers.len() - 1).unwrap().0 as usize];
         buf.read(&mut final_out).enq().expect("Failed to read output of network");
-        println!("Reading network output {:?}", st.elapsed());
+        println!("\nReading network output {:?}", st.elapsed());
         st = Instant::now();
 
         Ok(final_out)
     }
-
 
     pub fn weights(&self) -> &Vec<f64> {
         &self.weights
