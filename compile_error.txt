@@ -2,19 +2,39 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-10e585\input\CompileSource:20:30: error: '__private size_t' (aka '__private unsigned long') cannot be used as the type of a kernel parameter
-__kernel void forward(size_t input_length, size_t layer_len, int weights_offset, int biases_offset, __global int* counter, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
-                             ^
-C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:82:23: note: '__private size_t' (aka '__private unsigned long') declared here
-typedef __SIZE_TYPE__ size_t;
-                      ^
-C:\Users\farre\AppData\Local\Temp\comgr-10e585\input\CompileSource:20:51: error: '__private size_t' (aka '__private unsigned long') cannot be used as the type of a kernel parameter
-__kernel void forward(size_t input_length, size_t layer_len, int weights_offset, int biases_offset, __global int* counter, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
-                                                  ^
-C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:82:23: note: '__private size_t' (aka '__private unsigned long') declared here
-typedef __SIZE_TYPE__ size_t;
-                      ^
-2 errors generated.
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:32: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("x %zu y %zu v %f", x, y, value)
+              ~~~              ^
+              %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:35: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("x %zu y %zu v %f", x, y, value)
+                    ~~~           ^
+                    %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:44: error: expected ';' after expression
+    printf("x %zu y %zu v %f", x, y, value)
+                                           ^
+                                           ;
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:103: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+              ~~~                                                                                     ^~~~~
+              %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:110: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+                    ~~~                                                                                      ^
+                    %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:113: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+                          ~~~                                                                                   ^
+                          %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:116: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+                                ~~~                                                                                ^~~~~~~~~~~~
+                                %d
+C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:130: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
+    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+                                      ~~~                                                                                        ^~~~~~~~~~
+                                      %d
+7 warnings and 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 
