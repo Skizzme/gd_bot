@@ -2,9 +2,12 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-f79756\input\CompileSource:78:21: error: use of undeclared identifier 'layer_target'
-    double target = layer_target[x];
-                    ^
+C:\Users\farre\AppData\Local\Temp\comgr-61b941\input\CompileSource:123:68: error: too few arguments to function call, expected 2, have 1
+    out[i] = error_derivative(pow(sigmoid(values[i])-desired[i], 2));
+             ~~~~~~~~~~~~~~~~                                      ^
+C:\Users\farre\AppData\Local\Temp\comgr-61b941\input\CompileSource:65:8: note: 'error_derivative' declared here
+double error_derivative(double actual, double desired) {
+       ^
 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################

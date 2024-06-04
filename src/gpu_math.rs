@@ -1,7 +1,7 @@
 use std::collections::hash_map::Values;
 use std::fmt::Pointer;
 use ocl::{Buffer, ProQue, SpatialDims};
-use crate::network::calculate_worksize;
+use crate::cl_utils;
 
 pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, second: &Buffer<f64>, target: &Buffer<f64>) {
     let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
@@ -14,7 +14,7 @@ pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, second: &
         .build()
         .expect("Failed to build multiply kernel");
 
-    let work_size = calculate_worksize(max_wg, first.len());
+    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
     unsafe {
         mult_kernel
             .cmd()
@@ -36,7 +36,7 @@ pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, se
         .build()
         .expect("Failed to build multiply kernel");
 
-    let work_size = calculate_worksize(max_wg, first.len());
+    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
     unsafe {
         mult_kernel
             .cmd()
@@ -67,7 +67,7 @@ pub fn mtrx_combine_columns(proque: &ProQue, matrix: Buffer<f64>, x_len: i32, y_
         kernel
             .cmd()
             .global_work_size(SpatialDims::from((x_len, y_len)))
-            .local_work_size(SpatialDims::from((calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize), calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize))))
+            .local_work_size(SpatialDims::from((cl_utils::calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize), cl_utils::calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize))))
             .enq()
             .expect("Failed to enq kernel")
     }
@@ -96,7 +96,7 @@ pub fn activate_and_error_derivative(pro_que: &ProQue, values: &Buffer<f64>, tar
         kernel
             .cmd()
             .global_work_size(SpatialDims::from(values.len()))
-            .local_work_size(SpatialDims::from(calculate_worksize(max_wg, values.len())))
+            .local_work_size(SpatialDims::from(cl_utils::calculate_worksize(max_wg, values.len())))
             .enq()
             .expect("Failed to enq kernel")
     }

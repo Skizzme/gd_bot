@@ -4,7 +4,8 @@ use num_format::Locale::wo;
 
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
 use rand::random;
-use crate::gpu_math;
+use crate::{cl_utils, gpu_math};
+use crate::cl_utils::{calculate_worksize, execute_kernel};
 
 #[derive(Debug)]
 pub struct Network {
@@ -25,35 +26,10 @@ pub struct Network {
     // Individual output buffers for each layer, so each layer can have different sizes
     // Inputs to next layer will be outputs of last layer
     gpu_layer_bufs: Vec<Buffer<f64>>,
-}
-
-pub fn randomize_buffer(buffer: &Buffer<f64>, max_work_size: u32, pro_que: &ProQue) {
-    let rnd_kernel = pro_que
-        .kernel_builder("random_buf")
-        .arg(buffer)
-        .arg(random::<u64>())
-        .build()
-        .expect("Failed to build rnd_kernel");
-
-    unsafe {
-        rnd_kernel
-            .cmd()
-            .global_work_size(buffer.len())
-            .local_work_size(calculate_worksize(max_work_size as usize, buffer.len()))
-            .enq()
-            .expect("Failed to enq rnd_kernel")
-    }
-}
-
-pub fn calculate_worksize(max: usize, size: usize) -> usize {
-    let mut calc = 1;
-    for i in (1..max+1).rev() {
-        if (size as f32 / i as f32) % 1.0 == 0.0 {
-            calc = i;
-            break;
-        }
-    }
-    calc
+    // Stores a buffer on the GPU for each layer's sensitivities/gradients
+    // Only used for back propagation
+    gpu_layer_sensitivities: Vec<Buffer<f64>>,
+    gpu_out_buf: Buffer<f64>,
 }
 
 impl Network {
@@ -74,13 +50,11 @@ impl Network {
 
         let mut network_layers = vec![];
         let mut layer_buffers = vec![];
+        let mut layer_sensitivities = vec![];
 
         let mut layer_inputs = *layers.get(0).unwrap();
         // Add input layer, but since it isn't a real layer it doesn't have weights or biases
-        layer_buffers.push(Buffer::builder()
-                               .queue(queue.clone())
-                               .len(layer_inputs)
-                               .build().expect("Failed to make input buffer"));
+        layer_buffers.push(cl_utils::new_buffer(&pro_que, layer_inputs));
         network_layers.push((layers[0], 0, 0));
 
         let mut weight_offset = 0usize;
@@ -89,13 +63,11 @@ impl Network {
         for i in 1..layers.len() {
             let layer_size = *layers.get(i).unwrap();
 
-            let layer: Buffer<f64> = Buffer::builder()
-                .queue(queue.clone())
-                .len(layer_size)
-                .build().expect("Failed to make input buffer");
+            let layer: Buffer<f64> = cl_utils::new_buffer(&pro_que, layer_size);
             layer_buffers.push(layer);
 
             network_layers.push((layer_size, weight_offset, bias_offset));
+            layer_sensitivities.push(cl_utils::new_buffer(&pro_que, layer_inputs));
 
             weight_offset += layer_size*layer_inputs;
             bias_offset += layer_size;
@@ -106,22 +78,18 @@ impl Network {
 
         st = Instant::now();
         // println!("\nStoring network on GPU...");
-        let weight_buf: Buffer<f64> = Buffer::builder()
-            .queue(queue.clone())
-            .len(weight_offset)
-            .build().expect("Failed to make input buffer");
+        let weight_buf: Buffer<f64> = cl_utils::new_buffer(&pro_que, weight_offset);
         // Init network's weights randomly using GPU
-        randomize_buffer(&weight_buf, 256, &pro_que);
+        cl_utils::randomize_buffer(&weight_buf, 256, &pro_que);
 
-        let biases_buf: Buffer<f64> = Buffer::builder()
-            .queue(queue.clone())
-            .len(bias_offset)
-            .build().expect("Failed to make input buffer");
+        let biases_buf: Buffer<f64> = cl_utils::new_buffer(&pro_que, bias_offset);
         // Init network's biases randomly using GPU
-        randomize_buffer(&biases_buf, 256, &pro_que);
+        cl_utils::randomize_buffer(&biases_buf, 256, &pro_que);
 
-        // println!("Stored network on GPU {:?}\n", st.elapsed());
+        println!("Stored network on GPU {:?}\n", st.elapsed());
+        println!("{}", weight_buf.len());
 
+        let gpu_out_buf = cl_utils::new_buffer_f(&pro_que, layer_inputs, 0.0);
         Ok(Network {
             weights: weight_offset,
             biases: bias_offset,
@@ -130,19 +98,20 @@ impl Network {
             gpu_weights: weight_buf,
             gpu_biases: biases_buf,
             gpu_layer_bufs: layer_buffers,
+            gpu_layer_sensitivities: layer_sensitivities,
+            gpu_out_buf,
         })
     }
 
     pub fn forward(&self, inputs: Vec<f64>) -> Result<Vec<f64>, String> { // Will return proper error later
         let mut layer_in_size = self.layers[0].0;
-        let max_wg = self.gpu_proque.max_wg_size().expect("Failed to get max workgroup size");
 
         if inputs.len() != layer_in_size {
             return Err(format!("Input length is incorrect! Network input length is: {}", layer_in_size).to_string())
         }
 
         let mut st = Instant::now();
-        let mut buf = &self.gpu_layer_bufs[0];
+        let buf = &self.gpu_layer_bufs[0];
 
         buf.write(&inputs).enq().expect("Failed to write network inputs");
 
@@ -176,15 +145,7 @@ impl Network {
             st = Instant::now();
 
             unsafe {
-                let wg_size = (calculate_worksize((max_wg as f32).sqrt() as usize, layer_size), calculate_worksize((max_wg as f32).sqrt() as usize, layer_in_size));
-
-                forward_kernel
-                    .cmd()
-                    .global_work_size((layer_size, layer_in_size))
-                    .local_work_size(wg_size)
-                    .enq()
-                    .expect("Failed to enqueue layer kernel");
-
+                execute_kernel(&self.gpu_proque, &forward_kernel, (layer_size, layer_in_size));
                 // println!("Enqueued layer kernel {:?} {:?}", wg_size, st.elapsed());
                 st = Instant::now();
 
@@ -194,35 +155,24 @@ impl Network {
             buf = layer_buf;
         }
 
-        let out_buf: Buffer<f64> = Buffer::builder()
-            .queue(self.gpu_proque.queue().clone())
-            .len(buf.len())
-            .build()
-            .expect("Failed to build final out buffer");
         unsafe {
-            let wg_size_1d = calculate_worksize(max_wg, buf.len());
             let activation_kernel = self.gpu_proque
                 .kernel_builder("activation")
                 .arg(buf)
-                .arg(&out_buf)
+                .arg(&self.gpu_out_buf)
                 .build().unwrap();
 
             // println!("Created final activation kernel {:?}", st.elapsed());
             st = Instant::now();
 
-            activation_kernel
-                .cmd()
-                .global_work_size(buf.len())
-                .local_work_size(wg_size_1d)
-                .enq()
-                .expect("Failed to enqueue activation kernel");
+            cl_utils::execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
 
             // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
         }
 
         st = Instant::now();
         let mut final_out = vec![0f64; self.layers.get(self.layers.len() - 1).unwrap().0];
-        out_buf.read(&mut final_out).enq().expect("Failed to read output of network");
+        self.gpu_out_buf.read(&mut final_out).enq().expect("Failed to read output of network");
         // println!("\nReading network output {:?}", st.elapsed());
 
         Ok(final_out)
@@ -234,45 +184,30 @@ impl Network {
         target
     }
 
+    pub fn error(&self, values: Vec<f64>, target: Vec<f64>) -> f64 {
+        let mut error = 0.0;
+        for i in 0..values.len() {
+            error += (values[i]-target[i]).powf(2.0);
+        }
+        error
+    }
+
     pub fn backward(&self, mut target: Vec<f64>, learn_rate: f64) {
         let max_wg = self.gpu_proque.max_wg_size().expect("Failed to get max workgroup size");
-        let mut target_buf = Buffer::builder()
-            .queue(self.gpu_proque.queue().clone())
-            .len(target.len())
-            .build()
-            .expect("Failed to create target buf");
+        let target_buf = cl_utils::new_buffer(&self.gpu_proque, target.len());
         target_buf.write(&target).enq().unwrap();
 
-        let mut prev_layer_sensitivities = Buffer::builder()
-            .queue(self.gpu_proque.queue().clone())
-            .len(target.len())
-            .build()
-            .expect("Failed to create next target buffer");
-        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &prev_layer_sensitivities);
-        // println!("WTAT {:?}", gpu_math::load_buffer(&prev_layer_sensitivities));
+        let first_senses = cl_utils::new_buffer(&self.gpu_proque, target.len());
+        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &first_senses);;
+        let mut prev_layer_sensitivities = &first_senses;
 
         unsafe {
             for i in (1..self.layers.len()).rev() {
                 let (layer_size, weight_offset, bias_offset) = self.layers[i];
                 let (prev_size, prev_weight_offset, prev_bias_offset) = self.layers[i-1];
-                // if i != self.layers.len()-1 {
-                //     target_buf = Buffer::builder()
-                //         .queue(self.gpu_proque.queue().clone())
-                //         .len(layer_size)
-                //         .fill_val(0.0)
-                //         .build()
-                //         .expect("Failed to build ttarget buf");
-                //     // self.gpu_weights.cmd().offset(weight_offset).enq().expect("failed to enq offset cmd");
-                //     gpu_math::mult(&self.gpu_proque, weight_offset, &self.gpu_weights, &prev_layer_sensitivities, &target_buf);
-                //     // self.gpu_weights.cmd().offset(0).enq().expect("failed to enq offset cmd");
-                // }
 
-                let layer_sensitivities = Buffer::builder()
-                    .queue(self.gpu_proque.queue().clone())
-                    .len(prev_size)
-                    .fill_val(0.0)
-                    .build()
-                    .expect("Failed to create next target buffer");
+                let layer_sensitivities = &self.gpu_layer_sensitivities[i-1];
+                layer_sensitivities.cmd().fill(0.0, None).enq();
 
                 let back_kernel = self.gpu_proque
                     .kernel_builder("backward")
@@ -283,29 +218,16 @@ impl Network {
                     .arg(learn_rate)
                     .arg(&self.gpu_layer_bufs[i-1])
                     .arg(&self.gpu_layer_bufs[i])
-                    .arg(&prev_layer_sensitivities)
+                    .arg(prev_layer_sensitivities)
                     .arg(&self.gpu_weights)
                     .arg(&self.gpu_biases)
-                    .arg(&layer_sensitivities)
+                    .arg(layer_sensitivities)
                     .build()
                     .expect("failed to build backward kernel");
 
-                let wg_size = (calculate_worksize((max_wg as f32).sqrt() as usize, layer_size), calculate_worksize((max_wg as f32).sqrt() as usize, prev_size));
-                back_kernel
-                    .cmd()
-                    .global_work_size((layer_size, prev_size))
-                    .local_work_size(wg_size)
-                    .enq()
-                    .expect("Failed to enqueue layer kernel");
+                execute_kernel(&self.gpu_proque, &back_kernel, (layer_size, prev_size));
 
                 prev_layer_sensitivities = layer_sensitivities;
-
-                // gpu_math::mult(self.gpu_proque, )
-                // println!("bgradients {:?}", gpu_math::load_buffer(&prev_layer_gradients));
-                // gpu_math::mult_single(&self.gpu_proque, 0, &prev_layer_sensitivities, 1.0/prev_size as f64, &prev_layer_sensitivities);
-                // println!("agradients {:?}", gpu_math::load_buffer(&prev_layer_sensitivities));
-
-                // println!("Enqueued backward layer kernel {:?}", wg_size);
             }
         }
     }

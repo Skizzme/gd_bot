@@ -1,7 +1,7 @@
 extern crate ocl;
 
 use std::str::FromStr;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use num_format::{Locale, ToFormattedString};
 use rand::random;
@@ -10,6 +10,7 @@ use crate::network::Network;
 
 mod network;
 mod gpu_math;
+mod cl_utils;
 
 fn main() {
     // backprop();
@@ -26,16 +27,41 @@ fn main() {
     let st = Instant::now();
     let out = network.forward(vec![1.0; layers[0]]);
     println!("{:?} {:?}", st.elapsed(), out);
-    for i in 0..1500 {
-        let out = network.forward(vec![1.0, 0.0]);
-        println!("{:?}", out);
-        network.backward(vec![-0.5, 0.7, 0.2], 0.1);
-        let out = network.forward(vec![0.2, -0.2]);
+    let mut last_error = 1f64;
+    let mut close_error_count = 0;
+    let mut learn_rate = 0.1f64;
+    for i in 0..1000 {
+        let out = network.forward(vec![1.0, 0.0]).unwrap();
+        let error = network.error(out, vec![-0.5, 0.7, 0.2]);
+        if error <= 1e-8 {
+            break;
+        }
+        learn_rate += (last_error - error) / 5.0;
+        if (error - last_error).abs() < 1e-8 {
+            close_error_count += 1;
+        } else {
+            close_error_count = 0;
+        }
+        // if close_error_count > 250 {
+        //     break;
+        // }
+        if close_error_count > 8 {
+            learn_rate += 0.2;
+        }
+        learn_rate = learn_rate.max(0.001).min(0.8);
+        println!("{:?} {:?} {:?} {:?}", error, (error - last_error).abs(), close_error_count, learn_rate);
+        last_error = error;
+        println!("{}", i);
+        network.backward(vec![-0.5, 0.7, 0.2], learn_rate);
+        let out = network.forward(vec![0.2, -0.2]).unwrap();
         // println!("{:?}", out);
-        network.backward(vec![0.1, -0.2, 0.8], 0.1);
-        let out = network.forward(vec![0.6, 0.9]);
+        network.backward(vec![0.1, -0.2, 0.8], learn_rate);
+        let out = network.forward(vec![0.6, 0.9]).unwrap();
         // println!("{:?}", out);
-        network.backward(vec![-0.9, 0.9, 0.0], 0.1);
+        network.backward(vec![-0.9, 0.9, 0.0], learn_rate);
+        if close_error_count > 8 {
+            learn_rate -= 0.2;
+        }
     }
     let out = network.forward(vec![1.0, 0.0]);
     println!("{:?} {:?}", st.elapsed(), out);
