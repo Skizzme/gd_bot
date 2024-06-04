@@ -81,13 +81,14 @@ pub fn load_buffer(buf: &Buffer<f64>) -> Vec<f64> {
     val
 }
 
-pub fn apply_error_derivative_inplace(pro_que: ProQue, values: &Buffer<f64>, target: &Buffer<f64>) {
+pub fn activate_and_error_derivative(pro_que: &ProQue, values: &Buffer<f64>, target: &Buffer<f64>, out: &Buffer<f64>) {
     let max_wg = pro_que.max_wg_size().expect("Failed to get max workgroup size");
 
     let kernel = pro_que
-        .kernel_builder("error_derivative")
-        .arg(&values)
-        .arg(&target)
+        .kernel_builder("activate_and_error_derivative_calc")
+        .arg(values)
+        .arg(target)
+        .arg(out)
         .build()
         .expect("Failed to build kernel");
 

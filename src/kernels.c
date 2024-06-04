@@ -66,24 +66,26 @@ double sigmoid_derivative(double value) {
 //return 1.0;
 }
 
-__kernel void backward(int layer, ulong input_length, ulong weights_offset, ulong biases_offset, double learn_rate, __global double* inputs, __global double* layer_output, __global double* layer_target, __global double* weights, __global double* biases, __global double* gradients_out) {
+__kernel void backward(int layer, ulong input_length, ulong weights_offset, ulong biases_offset, double learn_rate, __global double* inputs, __global double* layer_output, __global double* sensitivities, __global double* weights, __global double* biases, __global double* gradients_out) {
     int x = get_global_id(0);
     int y = get_global_id(1);
     int weight_index = (input_length*y)+x + weights_offset;
     int bias_index = x+biases_offset;
     double output = layer_output[x];
     double activated_output = sigmoid(output);
-    double target = layer_target[x];
+//    double target = layer_target[x];
     double input = inputs[y];
     double activated_input = sigmoid(input);
+    double sensitivity = sensitivities[x];
     // sensitivity of unactivated to activated * (sensitivity of cost to activated || sensitivity of layer )
-    double gradient = sigmoid_derivative(output) * error_derivative(activated_output, target);
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
+    //error_derivative(activated_output, target)
+    double gradient = sigmoid_derivative(output) * sensitivity;
+    printf("l %d x %d y %d w %d b %d wv %f bv %f o %f ao %f s %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, sensitivity, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
     weights[weight_index] = weights[weight_index] - learn_rate * activated_input * gradient;
     if (y == 0) {
         biases[bias_index] = biases[bias_index] - learn_rate * gradient;
     }
-    atomicAdd_g_f(&gradients_out[x], gradient);
+    atomicAdd_g_f(&gradients_out[y], weights[weight_index]*gradient);
 }
 
 __kernel void multiply(__global double* first, __global double* second, __global double* target) {
@@ -106,9 +108,9 @@ __kernel void list_divide_inplace(__global double* top, double bottom) {
     top[i] = top[i]/bottom;
 }
 
-__kernel void error_derivative(__global double* values, __global double* desired) {
+__kernel void activate_and_error_derivative_calc(__global double* values, __global double* desired, __global double* out) {
     int i = get_global_id(0);
-    values[i] = error_derivative(values[i], desired[i])
+    out[i] = error_derivative(sigmoid(values[i]), desired[i]);
 }
 
 // gradient = input * error_derivative(actual_output - desired_output)

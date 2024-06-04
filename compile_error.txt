@@ -2,39 +2,10 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:32: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("x %zu y %zu v %f", x, y, value)
-              ~~~              ^
-              %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:35: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("x %zu y %zu v %f", x, y, value)
-                    ~~~           ^
-                    %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:28:44: error: expected ';' after expression
-    printf("x %zu y %zu v %f", x, y, value)
-                                           ^
-                                           ;
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:103: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-              ~~~                                                                                     ^~~~~
-              %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:110: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-                    ~~~                                                                                      ^
-                    %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:113: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-                          ~~~                                                                                   ^
-                          %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:116: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-                                ~~~                                                                                ^~~~~~~~~~~~
-                                %d
-C:\Users\farre\AppData\Local\Temp\comgr-0db7ac\input\CompileSource:81:130: warning: format specifies type 'size_t' (aka 'unsigned long') but the argument has type 'int' [-Wformat]
-    printf("l %zu x %zu y %zu w %zu b %zu wv %f bv %f o %f ao %f t %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, bias_index, weights[weight_index], biases[bias_index], output, activated_output, target, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-                                      ~~~                                                                                        ^~~~~~~~~~
-                                      %d
-7 warnings and 1 error generated.
+C:\Users\farre\AppData\Local\Temp\comgr-f79756\input\CompileSource:78:21: error: use of undeclared identifier 'layer_target'
+    double target = layer_target[x];
+                    ^
+1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

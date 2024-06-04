@@ -185,7 +185,7 @@ impl Network {
                     .enq()
                     .expect("Failed to enqueue layer kernel");
 
-                println!("Enqueued layer kernel {:?} {:?}", wg_size, st.elapsed());
+                // println!("Enqueued layer kernel {:?} {:?}", wg_size, st.elapsed());
                 st = Instant::now();
 
             }
@@ -242,36 +242,38 @@ impl Network {
             .build()
             .expect("Failed to create target buf");
         target_buf.write(&target).enq().unwrap();
+
         let mut prev_layer_sensitivities = Buffer::builder()
             .queue(self.gpu_proque.queue().clone())
-            .len(target_buf.len())
+            .len(target.len())
             .build()
             .expect("Failed to create next target buffer");
-        prev_layer_sensitivities.write(&mut target).enq().expect("Failed to write to buf");
-
+        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &prev_layer_sensitivities);
+        // println!("WTAT {:?}", gpu_math::load_buffer(&prev_layer_sensitivities));
 
         unsafe {
             for i in (1..self.layers.len()).rev() {
                 let (layer_size, weight_offset, bias_offset) = self.layers[i];
                 let (prev_size, prev_weight_offset, prev_bias_offset) = self.layers[i-1];
-                if i != self.layers.len()-1 {
-                    target_buf = Buffer::builder()
-                        .queue(self.gpu_proque.queue().clone())
-                        .len(layer_size)
-                        .fill_val(0.0)
-                        .build()
-                        .expect("Failed to build ttarget buf");
-                    // self.gpu_weights.cmd().offset(weight_offset).enq().expect("failed to enq offset cmd");
-                    gpu_math::mult(&self.gpu_proque, weight_offset, &self.gpu_weights, &prev_layer_sensitivities, &target_buf);
-                    // self.gpu_weights.cmd().offset(0).enq().expect("failed to enq offset cmd");
-                }
+                // if i != self.layers.len()-1 {
+                //     target_buf = Buffer::builder()
+                //         .queue(self.gpu_proque.queue().clone())
+                //         .len(layer_size)
+                //         .fill_val(0.0)
+                //         .build()
+                //         .expect("Failed to build ttarget buf");
+                //     // self.gpu_weights.cmd().offset(weight_offset).enq().expect("failed to enq offset cmd");
+                //     gpu_math::mult(&self.gpu_proque, weight_offset, &self.gpu_weights, &prev_layer_sensitivities, &target_buf);
+                //     // self.gpu_weights.cmd().offset(0).enq().expect("failed to enq offset cmd");
+                // }
 
-                prev_layer_sensitivities = Buffer::builder()
+                let layer_sensitivities = Buffer::builder()
                     .queue(self.gpu_proque.queue().clone())
-                    .len(layer_size)
+                    .len(prev_size)
                     .fill_val(0.0)
                     .build()
                     .expect("Failed to create next target buffer");
+
                 let back_kernel = self.gpu_proque
                     .kernel_builder("backward")
                     .arg(i as i32)
@@ -281,10 +283,10 @@ impl Network {
                     .arg(learn_rate)
                     .arg(&self.gpu_layer_bufs[i-1])
                     .arg(&self.gpu_layer_bufs[i])
-                    .arg(&target_buf)
+                    .arg(&prev_layer_sensitivities)
                     .arg(&self.gpu_weights)
                     .arg(&self.gpu_biases)
-                    .arg(&prev_layer_sensitivities)
+                    .arg(&layer_sensitivities)
                     .build()
                     .expect("failed to build backward kernel");
 
@@ -296,10 +298,12 @@ impl Network {
                     .enq()
                     .expect("Failed to enqueue layer kernel");
 
+                prev_layer_sensitivities = layer_sensitivities;
+
                 // gpu_math::mult(self.gpu_proque, )
                 // println!("bgradients {:?}", gpu_math::load_buffer(&prev_layer_gradients));
-                gpu_math::mult_single(&self.gpu_proque, 0, &prev_layer_sensitivities, 1.0/prev_size as f64, &prev_layer_sensitivities);
-                // println!("agradients {:?}", gpu_math::load_buffer(&prev_layer_gradients));
+                // gpu_math::mult_single(&self.gpu_proque, 0, &prev_layer_sensitivities, 1.0/prev_size as f64, &prev_layer_sensitivities);
+                // println!("agradients {:?}", gpu_math::load_buffer(&prev_layer_sensitivities));
 
                 // println!("Enqueued backward layer kernel {:?}", wg_size);
             }

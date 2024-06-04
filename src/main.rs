@@ -26,17 +26,22 @@ fn main() {
     let st = Instant::now();
     let out = network.forward(vec![1.0; layers[0]]);
     println!("{:?} {:?}", st.elapsed(), out);
-    for i in 0..500 {
-        let out = network.forward(vec![1.0; layers[0]]);
+    for i in 0..1500 {
+        let out = network.forward(vec![1.0, 0.0]);
         println!("{:?}", out);
         network.backward(vec![-0.5, 0.7, 0.2], 0.1);
-        // let out = network.forward(vec![0.2; layers[0]]);
+        let out = network.forward(vec![0.2, -0.2]);
         // println!("{:?}", out);
-        // network.backward(vec![0.1, -0.2, 0.8], 0.1);
+        network.backward(vec![0.1, -0.2, 0.8], 0.1);
+        let out = network.forward(vec![0.6, 0.9]);
+        // println!("{:?}", out);
+        network.backward(vec![-0.9, 0.9, 0.0], 0.1);
     }
-    let out = network.forward(vec![1.0; layers[0]]);
+    let out = network.forward(vec![1.0, 0.0]);
     println!("{:?} {:?}", st.elapsed(), out);
-    let out = network.forward(vec![0.2; layers[0]]);
+    let out = network.forward(vec![0.2, -0.2]);
+    println!("{:?} {:?}", st.elapsed(), out);
+    let out = network.forward(vec![0.6, 0.9]);
     println!("{:?} {:?}", st.elapsed(), out);
 }
 
