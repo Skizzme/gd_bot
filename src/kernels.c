@@ -26,19 +26,26 @@ void atomicAdd_g_f(volatile __global float *addr, float val)
 
 float sigmoid(float val) {
 //    printf("v: %f, %f\n", max(val, 0.0f), val);
+    if (val > 0.0) { return val; } else { return 0.02*val; }
 //    return max(val, 0.0f);
 //    return val;
-    return 1 / (1 + exp(-val)) * 2 - 1;
+//    return 1 / (1 + exp(-val));
+//    return 1 / (1 + exp(-val)) * 2 - 1;
+//    return 1 / (1 + exp(-val*4)) * 2 - 1;
+//    return (exp(val) - exp(-val)) / (exp(val) + exp(-val));
+//    return sin(val);
 }
 
 float sigmoid_derivative(float value) {
-//    if (value > 0) {
-//        return 1.0;
-//    } else {
-//        return 0.0;
-//    }
+//    value = sigmoid(value);
+//    if (value > 0) { return 1.0; } else { return 0.0; }
+    if (value > 0) { return 1.0; } else { return 0.02; }
 //    return 1.0;
-    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
+//    return exp(value) / pow(exp(value) + 1.0, 2.0);
+//    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
+//    return (8.0*exp(4*value)) / pow(exp(4*value) + 1.0, 2.0);
+//    return 1 - (sigmoid(value) * sigmoid(value));
+//    return cos(value);
 }
 
 __kernel void forward(
@@ -52,13 +59,13 @@ __kernel void forward(
     __constant float* input,
     __global float* output
 ) {
-    int x = get_global_id(0);
-    int y = get_global_id(1);
+    int x = get_global_id(0); // out dims
+    int y = get_global_id(1); // in dims
     float in = input[y];
     if (apply_activations_in == 1) {
         in = sigmoid(in);
     }
-    int w_ind =(input_length*x)+y + weights_offset;
+    int w_ind = (input_length*x)+y + weights_offset;
     float value = input[y]*weights[w_ind];
 //    printf("before %f\n", output[x]);
 //    atomicAdd_g_f(&output[x], 0.2327);
@@ -80,12 +87,12 @@ __kernel void set_biases(__global float* buffer, __constant float* biases, int o
     buffer[i] = biases[i+offset];
 }
 
-__kernel void random_buf(__global float* buffer, ulong randoms) {
+__kernel void random_buf(__global float* buffer, ulong randoms, float div) {
     int i = get_global_id(0);
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
     // * 2.0 - 1.0 // for -1.0 to 1.0 values
-    res = (res * 2.0 - 1.0 ) / 50.0; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+    res = (res * 2.0 - 1.0 ) / div; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
 //    printf("RES: %f\n", res);
     buffer[i] = res;
 }
@@ -119,29 +126,34 @@ __kernel void backward(
     __global float* bias_mods,
     __global float* gradients_out
 ) {
-    int x = get_global_id(0);
-    int y = get_global_id(1);
+    int x = get_global_id(0); // out dims
+    int y = get_global_id(1); // in dims
     ulong weight_index = (input_length*x)+y + weights_offset; // might supposed to be (input_length*x)+y + weights_offset
     ulong bias_index = x+biases_offset;
 
     float gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
-    atomicAdd_g_f(&gradients_out[y], weights[weight_index]*gradient);
+//    printf("som %f %f %f\n", gradient * weights[weight_index], gradient, weights[weight_index]);
+    atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
 
     float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
     if (!isnan(new_weight)) {
 //        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
-        weights[weight_index] = new_weight;
+        weight_mods[weight_index] += new_weight - weights[weight_index];
+//        weights[weight_index] = new_weight;
     } else {
 //        weights[weight_index] = 0.0;
+//        printf("set weight %d to 0.0 %f %f %f %f %f\n", weight_index, weights[weight_index], sigmoid(inputs[y]), gradient, sensitivities[x], layer_output[x]);
     }
 
     if (y == 0) {
         float new_bias = biases[bias_index] - learn_rate * gradient;
         if (!isnan(new_bias)) {
-//            bias_mods[bias_index] -= learn_rate * gradient;
-            biases[bias_index] = new_bias;
+//            bias_mods[bias_index] -= learn_rate * gradient; // maybe incorrect value
+            bias_mods[bias_index] += new_bias - biases[bias_index];
+//            biases[bias_index] = new_bias;
         } else {
 //            biases[bias_index] = 0.0;
+//            printf("set bias %d to 0.0\n", bias_index);
         }
     }
 }

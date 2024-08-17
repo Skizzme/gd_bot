@@ -100,11 +100,13 @@ impl Network {
         // println!("\nStoring network on GPU...");
         let weight_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, weight_offset);
         // Init network's weights randomly using GPU
-        cl_utils::randomize_buffer(&weight_buf, 256, &pro_que);
+        cl_utils::randomize_buffer(&weight_buf, 256, 30.0, &pro_que);
 
         let biases_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, bias_offset);
         // Init network's biases randomly using GPU
-        cl_utils::randomize_buffer(&biases_buf, 256, &pro_que);
+        cl_utils::randomize_buffer(&biases_buf, 256, 30.0, &pro_que);
+
+        println!("{:?}", cl_utils::buf_read(&weight_buf));
 
         println!("Stored network on GPU {:?}\n", st.elapsed());
         println!("{}", weight_buf.len());
@@ -172,23 +174,25 @@ impl Network {
             }
 
             layer_in_size = self.layers[i].0;
+            println!("{:?} {:?}", i, cl_utils::buf_read(&layer_buf));
             buf = layer_buf;
         }
 
-        unsafe {
-            let activation_kernel = self.gpu_proque
-                .kernel_builder("activation")
-                .arg(buf)
-                .arg(&self.gpu_out_buf)
-                .build().unwrap();
-
-            // println!("Created final activation kernel {:?}", st.elapsed());
-            st = Instant::now();
-
-            execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
-
-            // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
-        }
+        // unsafe {
+        //     let activation_kernel = self.gpu_proque
+        //         .kernel_builder("activation")
+        //         .arg(buf)
+        //         .arg(&self.gpu_out_buf)
+        //         .build().unwrap();
+        //
+        //     // println!("Created final activation kernel {:?}", st.elapsed());
+        //     st = Instant::now();
+        //
+        //     execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
+        //
+        //     // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
+        // }
+        buf.copy(&self.gpu_out_buf, None, None).enq();
 
         st = Instant::now();
         // println!("\nReading network output {:?}", st.elapsed());
@@ -214,6 +218,8 @@ impl Network {
                 let layer_sensitivities = &self.gpu_layer_sensitivities[i-1];
                 layer_sensitivities.cmd().fill(0.0, None).enq();
 
+                // println!("{:?} {:?} {:?}", cl_utils::buf_read(&layer_sensitivities), layer_size, prev_size);
+
                 let st = Instant::now();
                 let back_kernel = self.gpu_proque
                     .kernel_builder("backward")
@@ -234,13 +240,14 @@ impl Network {
 
                 execute_kernel(&self.gpu_proque, &back_kernel, (layer_size, prev_size));
 
+                // println!("{:?}", cl_utils::buf_read(&layer_sensitivities));
                 prev_layer_sensitivities = layer_sensitivities;
             }
         }
     }
 
     // TODO: Train off of averages, this is just a test. try to use gpu for as much as possible (taking averages etc).
-    pub fn train<T: Into<Option<f32>>, F>(&self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, learn_rate: f32, mut epoch_call_back: F) -> Result<f32, String>
+    pub fn train<T: Into<Option<f32>>, F>(&self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, mut learn_rate: f32, mut epoch_call_back: F) -> Result<f32, String>
         where F: FnMut(&Self)
     {
         let target_error = target_error.into();
@@ -270,28 +277,31 @@ impl Network {
                 let out = self.forward(input).unwrap();
                 error = self.error(&out, expected);
                 error_sum += error;
-                // learn_rate += (last_error - error) / 5.0;
-                // learn_rate = learn_rate.max(0.00001).min(0.4);
-                last_error = error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
                     println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, target_error, out, expected);
                     last_print = Instant::now();
                 }
-                let batch_size = 8;
+                let batch_size = 32;
                 if batch_complete >= batch_size {
+                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
+                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
+                    weight_mods.cmd().fill(0.0, None).enq();
+                    bias_mods.cmd().fill(0.0, None).enq();
                     // println!("bat");
-                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
-                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
-                    // weight_mods.cmd().fill(0.0, None).enq();
-                    // bias_mods.cmd().fill(0.0, None).enq();
-                    // batch_complete = 0;
+                    batch_complete = 0;
                 }
                 self.backward(expected, learn_rate, &weight_mods, &bias_mods);
                 batch_complete += 1;
+                // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
             }
             // println!("{:?}", cl_utils::buf_read(&weight_mods));
             error_sum /= inputs.len() as f32;
-            if i % 3 == 0 {
+            // learn_rate += (last_error - error_sum) / 5.0;
+            learn_rate += 5.0 / (last_error - error_sum) / 4000.0;
+            println!("lear: {}", 5.0 / (last_error - error_sum) / 4000.0);
+            learn_rate = learn_rate.max(0.00001).min(0.07);
+            last_error = error_sum;
+            if i % 5 == 0 {
                 epoch_call_back(self);
             }
             println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error_sum, learn_rate, i, epochs, target_error);
@@ -301,6 +311,8 @@ impl Network {
             }
             i += 1;
         }
+        println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
+        println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
         println!("Network training completed.\n  Completed-Epochs: {}\n  Final-Error: {}\n", i, last_error);
         return Ok(0.0);
     }
