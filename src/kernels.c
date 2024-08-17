@@ -1,29 +1,51 @@
-void atomicAdd_g_f(volatile __global double *addr, double val) {
+//void atomicAdd_g_f(volatile __global float *addr, float val) {
+//    union {
+//        uint u32;
+//        float f32;
+//    } next, expected, current;
+//    current.f32 = *addr;
+//    do {
+//        expected.f32 = current.f32;
+//        next.f32 = expected.f32 + val;
+//        current.u32 = atom_cmpxchg((volatile __global uint *)addr, expected.u32, next.u32);
+//    } while( current.u32 != expected.u32 );
+//}
+void atomicAdd_g_f(volatile __global float *addr, float val)
+{
     union {
-        ulong u64;
-        double f64;
+        unsigned int u32;
+        float f32;
     } next, expected, current;
-    current.f64 = *addr;
+    current.f32 = *addr;
     do {
-        expected.f64 = current.f64;
-        next.f64 = expected.f64 + val;
-        current.u64 = atom_cmpxchg((volatile __global ulong *)addr, expected.u64, next.u64);
-    } while( current.u64 != expected.u64 );
+        expected.f32 = current.f32;
+        next.f32 = expected.f32 + val;
+        current.u32 = atomic_cmpxchg( (volatile __global unsigned int *)addr, expected.u32, next.u32);
+    } while( current.u32 != expected.u32 );
 }
 
-double sigmoid(double val) {
-    return 1 / (1 + exp(-val)) * 2 - 1;
+float sigmoid(float val) {
+    return val;
+//    return 1 / (1 + exp(-val)) * 2 - 1;
 }
 
-__kernel void forward(int apply_activations_in, ulong input_length, ulong layer_len, ulong weights_offset, ulong biases_offset, __constant double* weights, __constant double* biases, __constant double* input, __global double* output) {
+float sigmoid_derivative(float value) {
+//    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
+    return 1.0;
+}
+
+__kernel void forward(int apply_activations_in, ulong input_length, ulong layer_len, ulong weights_offset, ulong biases_offset, __constant float* weights, __constant float* biases, __constant float* input, __global float* output) {
     int x = get_global_id(0);
     int y = get_global_id(1);
-    double in = input[y];
+    float in = input[y];
     if (apply_activations_in == 1) {
         in = sigmoid(in);
     }
     int w_ind =(input_length*x)+y + weights_offset;
-    double value = input[y]*weights[w_ind];
+    float value = input[y]*weights[w_ind];
+    printf("before %f\n", output[x]);
+    atomicAdd_g_f(&output[x], 0.2327);
+    printf("after %f\n", output[x]);
 //    printf("x %zu y %zu wv %f bi %zu bv %f wi %zu v %f\n", x, y, weights[w_ind], (uint) (y+biases_offset), biases[x+biases_offset], w_ind, value);
 //    printf("in %f activated %zu\n", in, apply_activations_in);
     atomicAdd_g_f(&output[x], value);
@@ -36,12 +58,12 @@ __kernel void forward(int apply_activations_in, ulong input_length, ulong layer_
     }
 }
 
-__kernel void set_biases(__global double* buffer, __constant double* biases, int offset) {
+__kernel void set_biases(__global float* buffer, __constant float* biases, int offset) {
     int i = get_global_id(0);
     buffer[i] = biases[i+offset];
 }
 
-__kernel void random_buf(__global double* buffer, ulong randoms) {
+__kernel void random_buf(__global float* buffer, ulong randoms) {
     int i = get_global_id(0);
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
@@ -49,34 +71,29 @@ __kernel void random_buf(__global double* buffer, ulong randoms) {
     buffer[i] = res;
 }
 
-__kernel void activation(__global double* values, __global double* target) {
+__kernel void activation(__global float* values, __global float* target) {
     int i = get_global_id(0);
     target[i] = sigmoid(values[i]);
 }
 
-__kernel void cost(__constant double* values, __constant double* target, __global double* output) {
+__kernel void cost(__constant float* values, __constant float* target, __global float* output) {
     int i = get_global_id(0);
-    atomicAdd_g_f(&output[0], pow(values[i]-target[i], 2.0));
+    atomicAdd_g_f(&output[0], pow(values[i]-target[i], 2.0f));
 //    error[i] = target[i]-values[i];
 }
 
-double error_derivative(double actual, double desired) {
+float error_derivative(float actual, float desired) {
     return 2.0 * (actual - desired);
 }
 
-double sigmoid_derivative(double value) {
-    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
-//return 1.0;
-}
-
-__kernel void backward(ulong input_length, ulong weights_offset, ulong biases_offset, double learn_rate, __global double* inputs, __global double* layer_output, __global double* sensitivities, __global double* weights, __global double* biases, __global double* gradients_out) {
+__kernel void backward(ulong input_length, ulong weights_offset, ulong biases_offset, float learn_rate, __global float* inputs, __global float* layer_output, __global float* sensitivities, __global float* weights, __global float* biases, __global float* gradients_out) {
     int x = get_global_id(0);
     int y = get_global_id(1);
     ulong weight_index = (input_length*x)+y + weights_offset;
     ulong bias_index = x+biases_offset;
-    double gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
+    float gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
     atomicAdd_g_f(&gradients_out[y], weights[weight_index]*gradient);
-    double new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
+    float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
     if (!isnan(new_weight)) {
         weights[weight_index] = new_weight;
     } else {
@@ -84,7 +101,7 @@ __kernel void backward(ulong input_length, ulong weights_offset, ulong biases_of
     }
 
     if (y == 0) {
-        double new_bias = biases[bias_index] - learn_rate * gradient;
+        float new_bias = biases[bias_index] - learn_rate * gradient;
         if (!isnan(new_bias)) {
             biases[bias_index] = new_bias;
         } else {
@@ -93,27 +110,27 @@ __kernel void backward(ulong input_length, ulong weights_offset, ulong biases_of
     }
 }
 
-__kernel void multiply(__global double* first, __global double* second, __global double* target) {
+__kernel void multiply(__global float* first, __global float* second, __global float* target) {
     int index = get_global_id(0);
     target[index] = first[index] * second[index];
 }
 
-__kernel void multiply_single(__global double* first, double second, __global double* target) {
+__kernel void multiply_single(__global float* first, float second, __global float* target) {
      int index = get_global_id(0);
      target[index] = first[index] * second;
  }
 
-__kernel void flat_combine_matrix(__global double* matrix, __global double* out, int x_len) {
+__kernel void flat_combine_matrix(__global float* matrix, __global float* out, int x_len) {
     int x = get_global_id(0);
     atomicAdd_g_f(&out[x], matrix[(x_len*get_global_id(1))+x]);
 }
 
-__kernel void list_divide_inplace(__global double* top, double bottom) {
+__kernel void list_divide_inplace(__global float* top, float bottom) {
     int i = get_global_id(0);
     top[i] = top[i]/bottom;
 }
 
-__kernel void activate_and_error_derivative_calc(__global double* values, __global double* desired, __global double* out) {
+__kernel void activate_and_error_derivative_calc(__global float* values, __global float* desired, __global float* out) {
     int i = get_global_id(0);
     out[i] = error_derivative(sigmoid(values[i]), desired[i]);
 }

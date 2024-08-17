@@ -1,6 +1,6 @@
 extern crate ocl;
 
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -19,40 +19,42 @@ fn main() {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
 
     let epochs = u32::from_str(args[1]).unwrap();
+    let learn_rate = f32::from_str(args[2]).unwrap();
     let mut layers = vec![];
-    for i in 2..args.len() {
+    for i in 3..args.len() {
         let arg_val = args[i];
         layers.push(usize::from_str(arg_val).unwrap());
     }
     let network = Network::new(layers.clone(), None, None).unwrap();
     println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights().to_formatted_string(&Locale::en), network.biases().to_formatted_string(&Locale::en), ((network.weights()+network.biases())*i32::BITS as usize/8).to_formatted_string(&Locale::en));
     let st = Instant::now();
-    let mut t_inputs = vec![];
-    let mut t_outputs = vec![];
-    for i in 0..100 {
-        let i = i as f64;
-        println!("{}", ((i/100.0)*2.0*PI).sin());
-        t_inputs.push(vec![i]);
-        t_outputs.push(vec![((i/100.0)*2.0*PI).sin()]);
-    }
-    network.train(epochs, 0.0000005, &t_inputs, &t_outputs).unwrap();
+    let mut t_inputs: Vec<Vec<f32>> = vec![vec![1.0], vec![2.0], vec![-1.0], vec![0.0]];
+    let mut t_outputs: Vec<Vec<f32>> = vec![vec![0.0], vec![0.25], vec![0.85], vec![-0.25]];
+    // let samples = 20;
+    // for i in 0..samples {
+    //     let i = i as f32;
+    //     println!("{}", ((i/samples as f32)*2.0*PI).sin());
+    //     t_inputs.push(vec![i]);
+    //     t_outputs.push(vec![((i/samples as f32)*2.0*PI).sin()]);
+    // }
+    network.train(epochs, 0.0000005, &mut t_inputs, &mut t_outputs, learn_rate).unwrap();
     for i in 0..t_inputs.len() {
         let t_input = &t_inputs[i];
         let t_output = &t_outputs[i];
-        println!("{:?} {:?}", network.forward(&t_input), t_output);
+        println!("OUT: {:?}, EXPECTED: {:?}", network.forward(&t_input), t_output);
     }
 }
 
-pub fn error_derivative(actual: f64, desired: f64) -> f64 {
+pub fn error_derivative(actual: f32, desired: f32) -> f32 {
     2.0 * (actual - desired)
 }
 
-pub fn activation(value: f64) -> f64 {
+pub fn activation(value: f32) -> f32 {
     1.0 / (1.0 + (-value).exp()) * 2.0 - 1.0
     // value
 }
 
-pub fn activation_derivative(activated: f64) -> f64 {
+pub fn activation_derivative(activated: f32) -> f32 {
     (2.0*activated.exp()) / (activated.exp() + 1.0).powf(2.0)
     // 1.0
 }
@@ -63,10 +65,10 @@ pub fn activation_derivative(activated: f64) -> f64 {
 pub fn backprop() {
     let learn_rate = 0.1;
     let input = 1.5;
-    let mut weight_1 = random::<f64>();
-    let mut bias_1 = random::<f64>();
-    let mut weight_2 = random::<f64>();
-    let mut bias_2 = random::<f64>();
+    let mut weight_1 = random::<f32>();
+    let mut bias_1 = random::<f32>();
+    let mut weight_2 = random::<f32>();
+    let mut bias_2 = random::<f32>();
     let desired_output = -0.2;
 
     for i in 0..10000 {

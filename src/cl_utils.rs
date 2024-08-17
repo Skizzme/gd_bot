@@ -26,7 +26,7 @@ pub fn buf_write<T: ocl::OclPrm, W:  for<'a> Into<WriteSrc<'a, T>>>(buffer: &Buf
     buffer.write(values).enq().expect("Failed to write network inputs");
 }
 
-pub fn randomize_buffer(buffer: &Buffer<f64>, max_work_size: u32, pro_que: &ProQue) {
+pub fn randomize_buffer(buffer: &Buffer<f32>, max_work_size: u32, pro_que: &ProQue) {
     let rnd_kernel = pro_que
         .kernel_builder("random_buf")
         .arg(buffer)

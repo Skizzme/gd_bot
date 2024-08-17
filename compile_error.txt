@@ -2,9 +2,12 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-cb21f8\input\CompileSource:89:34: error: expected expression
-            biases[bias_index] = ;
-                                 ^
+C:\Users\farre\AppData\Local\Temp\comgr-5dd3ac\input\CompileSource:36:19: error: passing '__private float *' to parameter of type 'volatile __global float *' changes address space of pointer
+    atomicAdd_g_f(&test, 0.2327);
+                  ^~~~~
+C:\Users\farre\AppData\Local\Temp\comgr-5dd3ac\input\CompileSource:3:45: note: passing argument to parameter 'addr' here
+void atomicAdd_g_f(volatile __global float *addr, float val) {
+                                            ^
 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################

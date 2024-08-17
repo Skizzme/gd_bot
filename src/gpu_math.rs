@@ -3,7 +3,7 @@ use std::fmt::Pointer;
 use ocl::{Buffer, ProQue, SpatialDims};
 use crate::cl_utils;
 
-pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, second: &Buffer<f64>, target: &Buffer<f64>) {
+pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, second: &Buffer<f32>, target: &Buffer<f32>) {
     let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
 
     let mult_kernel = proque
@@ -25,7 +25,7 @@ pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, second: &
     }
 }
 
-pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, second: f64, target: &Buffer<f64>) {
+pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, second: f32, target: &Buffer<f32>) {
     let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
 
     let mult_kernel = proque
@@ -47,9 +47,9 @@ pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f64>, se
     }
 }
 
-pub fn mtrx_combine_columns(proque: &ProQue, matrix: Buffer<f64>, x_len: i32, y_len: i32) -> Buffer<f64> {
+pub fn mtrx_combine_columns(proque: &ProQue, matrix: Buffer<f32>, x_len: i32, y_len: i32) -> Buffer<f32> {
     let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
-    let out: Buffer<f64> = Buffer::builder()
+    let out: Buffer<f32> = Buffer::builder()
         .queue(proque.queue().clone())
         .len(x_len)
         .build()
@@ -75,13 +75,13 @@ pub fn mtrx_combine_columns(proque: &ProQue, matrix: Buffer<f64>, x_len: i32, y_
     out
 }
 
-pub fn load_buffer(buf: &Buffer<f64>) -> Vec<f64> {
+pub fn load_buffer(buf: &Buffer<f32>) -> Vec<f32> {
     let mut val = vec![0.0; buf.len()];
     buf.read(&mut val).enq().expect("Failed to read buffer");
     val
 }
 
-pub fn activate_and_error_derivative(pro_que: &ProQue, values: &Buffer<f64>, target: &Buffer<f64>, out: &Buffer<f64>) {
+pub fn activate_and_error_derivative(pro_que: &ProQue, values: &Buffer<f32>, target: &Buffer<f32>, out: &Buffer<f32>) {
     let max_wg = pro_que.max_wg_size().expect("Failed to get max workgroup size");
 
     let kernel = pro_que
