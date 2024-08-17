@@ -2,12 +2,9 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-61b941\input\CompileSource:123:68: error: too few arguments to function call, expected 2, have 1
-    out[i] = error_derivative(pow(sigmoid(values[i])-desired[i], 2));
-             ~~~~~~~~~~~~~~~~                                      ^
-C:\Users\farre\AppData\Local\Temp\comgr-61b941\input\CompileSource:65:8: note: 'error_derivative' declared here
-double error_derivative(double actual, double desired) {
-       ^
+C:\Users\farre\AppData\Local\Temp\comgr-cb21f8\input\CompileSource:89:34: error: expected expression
+            biases[bias_index] = ;
+                                 ^
 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################

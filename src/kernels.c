@@ -45,7 +45,7 @@ __kernel void random_buf(__global double* buffer, ulong randoms) {
     int i = get_global_id(0);
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
-    res = (res - 0.5) / 50.0; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+    res = (res * 2.0 - 1.0) / 50.0; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
     buffer[i] = res;
 }
 
@@ -69,30 +69,28 @@ double sigmoid_derivative(double value) {
 //return 1.0;
 }
 
-__kernel void backward(int layer, ulong input_length, ulong weights_offset, ulong biases_offset, double learn_rate, __global double* inputs, __global double* layer_output, __global double* sensitivities, __global double* weights, __global double* biases, __global double* gradients_out) {
+__kernel void backward(ulong input_length, ulong weights_offset, ulong biases_offset, double learn_rate, __global double* inputs, __global double* layer_output, __global double* sensitivities, __global double* weights, __global double* biases, __global double* gradients_out) {
     int x = get_global_id(0);
     int y = get_global_id(1);
     ulong weight_index = (input_length*x)+y + weights_offset;
     ulong bias_index = x+biases_offset;
-    double output = layer_output[x];
-    double activated_output = sigmoid(output);
-//    double target = layer_target[x];
-    double input = inputs[y];
-    double activated_input = sigmoid(input);
-    double sensitivity = sensitivities[x];
-    // sensitivity of unactivated to activated * (sensitivity of cost to activated || sensitivity of layer )
-    //error_derivative(activated_output, target)
-    double gradient = sigmoid_derivative(output) * sensitivity;
-//    if (x % 1000 == 0 && y % 100 == 0) {
-//        printf("l %d x %d y %d w %lu wo %lu wa %lu b %lu bo %lu wv %f bv %f o %f ao %f s %f i %f ai %f g %f wd %f bd %f\n", layer, x, y, weight_index, weights_offset, (ulong) (input_length*y), bias_index, biases_offset, weights[weight_index], biases[bias_index], output, activated_output, sensitivity, input, activated_input, gradient, -1 * learn_rate * activated_input * gradient, -1 * learn_rate * gradient);
-//    }
-//    barrier(CLK_GLOBAL_MEM_FENCE); // For some reason it crashed without this
+    double gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
     atomicAdd_g_f(&gradients_out[y], weights[weight_index]*gradient);
-    weights[weight_index] = weights[weight_index] - learn_rate * activated_input * gradient;
-    if (y == 0) {
-        biases[bias_index] = biases[bias_index] - learn_rate * gradient;
+    double new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
+    if (!isnan(new_weight)) {
+        weights[weight_index] = new_weight;
+    } else {
+        weights[weight_index] = 0.0;
     }
-////    printf("%zu\n", y);
+
+    if (y == 0) {
+        double new_bias = biases[bias_index] - learn_rate * gradient;
+        if (!isnan(new_bias)) {
+            biases[bias_index] = new_bias;
+        } else {
+            biases[bias_index] = 0.0;
+        }
+    }
 }
 
 __kernel void multiply(__global double* first, __global double* second, __global double* target) {

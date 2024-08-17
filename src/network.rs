@@ -3,9 +3,11 @@ use std::time::Instant;
 use num_format::Locale::wo;
 
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
+use ocl::enums::WriteSrc;
 use rand::random;
 use crate::{cl_utils, gpu_math};
 use crate::cl_utils::{calculate_worksize, execute_kernel};
+use num_format::{Locale, ToFormattedString};
 
 #[derive(Debug)]
 pub struct Network {
@@ -103,7 +105,7 @@ impl Network {
         })
     }
 
-    pub fn forward(&self, inputs: Vec<f64>) -> Result<Vec<f64>, String> { // Will return proper error later
+    pub fn forward(&self, inputs: &Vec<f64>) -> Result<Vec<f64>, String> { // Will return proper error later
         let mut layer_in_size = self.layers[0].0;
 
         if inputs.len() != layer_in_size {
@@ -111,9 +113,9 @@ impl Network {
         }
 
         let mut st = Instant::now();
-        let buf = &self.gpu_layer_bufs[0];
+        let mut buf = &self.gpu_layer_bufs[0];
 
-        buf.write(&inputs).enq().expect("Failed to write network inputs");
+        buf.write(inputs).enq().expect("Failed to write network inputs");
 
         // println!("\nInitialized network input {:?}", st.elapsed());
         st = Instant::now();
@@ -171,31 +173,16 @@ impl Network {
         }
 
         st = Instant::now();
-        let mut final_out = vec![0f64; self.layers.get(self.layers.len() - 1).unwrap().0];
-        self.gpu_out_buf.read(&mut final_out).enq().expect("Failed to read output of network");
         // println!("\nReading network output {:?}", st.elapsed());
 
-        Ok(final_out)
+        Ok(cl_utils::buf_read(&self.gpu_out_buf))
     }
 
-    pub fn read_buf(buffer: &Buffer<f64>) -> Vec<f64> {
-        let mut target = vec![0.0; buffer.len()];
-        buffer.read(&mut target).enq();
-        target
-    }
-
-    pub fn error(&self, values: Vec<f64>, target: Vec<f64>) -> f64 {
-        let mut error = 0.0;
-        for i in 0..values.len() {
-            error += (values[i]-target[i]).powf(2.0);
-        }
-        error
-    }
-
-    pub fn backward(&self, mut target: Vec<f64>, learn_rate: f64) {
+    // TODO: implement proper training, using averaged gradients etc
+    pub fn backward(&self, mut target: &Vec<f64>, learn_rate: f64) {
         let max_wg = self.gpu_proque.max_wg_size().expect("Failed to get max workgroup size");
         let target_buf = cl_utils::new_buffer(&self.gpu_proque, target.len());
-        target_buf.write(&target).enq().unwrap();
+        target_buf.write(target).enq().unwrap();
 
         let first_senses = cl_utils::new_buffer(&self.gpu_proque, target.len());
         gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &first_senses);;
@@ -209,9 +196,9 @@ impl Network {
                 let layer_sensitivities = &self.gpu_layer_sensitivities[i-1];
                 layer_sensitivities.cmd().fill(0.0, None).enq();
 
+                let st = Instant::now();
                 let back_kernel = self.gpu_proque
                     .kernel_builder("backward")
-                    .arg(i as i32)
                     .arg(prev_size as u64)
                     .arg(weight_offset as u64)
                     .arg(bias_offset as u64)
@@ -230,6 +217,57 @@ impl Network {
                 prev_layer_sensitivities = layer_sensitivities;
             }
         }
+    }
+
+    // TODO: Train off of averages, this is just a test. try to use gpu for as much as possible (taking averages etc).
+    pub fn train<T: Into<Option<f64>>>(&self, epochs: u32, target_error: T, inputs: &Vec<Vec<f64>>, outputs: &Vec<Vec<f64>>) -> Result<f64, String> {
+        let target_error = target_error.into();
+        if inputs.len() != outputs.len() {
+            return Err("Different length of input sets to output sets".to_string())
+        }
+        let mut i = 0u32;
+        let mut last_error = 1f64;
+        let mut close_error_count = 0;
+        let mut learn_rate = 0.01f64;
+        let mut last_print = Instant::now();
+        let p_t_err = match target_error {None => "None".to_string(), Some(val) => format!("{:.4}", val).to_string()};
+        println!("\nBeginning network training.\n  Samples: {}\n  Target-Error: {}\n  Max-Epochs: {}", inputs.len(), p_t_err.as_str(), epochs);
+        while i < epochs {
+            let mut error = 0.0;
+            let mut error_sum = 0.0;
+            for j in 0..inputs.len() {
+                let input = &inputs[j];
+                let expected = &outputs[j];
+                let out = self.forward(input).unwrap();
+                error = self.error(&out, expected);
+                error_sum += error;
+                // learn_rate += (last_error - error) / 5.0;
+                // learn_rate = learn_rate.max(0.00001).min(0.4);
+                last_error = error;
+                if last_print.elapsed().as_secs_f32() > 0.2 {
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error, learn_rate, i, epochs, target_error);
+                    last_print = Instant::now();
+                }
+                self.backward(expected, learn_rate);
+            }
+            error_sum /= inputs.len() as f64;
+            println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error_sum, learn_rate, i, epochs, target_error);
+            if target_error.is_some() && error <= target_error.unwrap() {
+                break;
+            }
+            i += 1;
+        }
+        println!("Network training completed.\n  Completed-Epochs: {}\n  Final-Error: {}\n", i, last_error);
+        return Ok(0.0);
+    }
+
+    // TODO: make this gpu accelerated if necessary
+    pub fn error(&self, values: &Vec<f64>, target: &Vec<f64>) -> f64 {
+        let mut error = 0.0;
+        for i in 0..values.len() {
+            error += (values[i]-target[i]).powf(2.0);
+        }
+        error
     }
 
     pub fn layers(&self) -> &Vec<(usize, usize, usize)> {

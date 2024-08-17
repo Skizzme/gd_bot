@@ -1,5 +1,6 @@
 extern crate ocl;
 
+use std::f64::consts::PI;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -17,58 +18,29 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
 
+    let epochs = u32::from_str(args[1]).unwrap();
     let mut layers = vec![];
-    for i in 1..args.len() {
+    for i in 2..args.len() {
         let arg_val = args[i];
         layers.push(usize::from_str(arg_val).unwrap());
     }
     let network = Network::new(layers.clone(), None, None).unwrap();
     println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights().to_formatted_string(&Locale::en), network.biases().to_formatted_string(&Locale::en), ((network.weights()+network.biases())*i32::BITS as usize/8).to_formatted_string(&Locale::en));
     let st = Instant::now();
-    let out = network.forward(vec![1.0; layers[0]]);
-    println!("{:?} {:?}", st.elapsed(), out);
-    let mut last_error = 1f64;
-    let mut close_error_count = 0;
-    let mut learn_rate = 0.1f64;
-    for i in 0..1000 {
-        let out = network.forward(vec![1.0, 0.0]).unwrap();
-        let error = network.error(out, vec![-0.5, 0.7, 0.2]);
-        if error <= 1e-8 {
-            break;
-        }
-        learn_rate += (last_error - error) / 5.0;
-        if (error - last_error).abs() < 1e-8 {
-            close_error_count += 1;
-        } else {
-            close_error_count = 0;
-        }
-        // if close_error_count > 250 {
-        //     break;
-        // }
-        if close_error_count > 8 {
-            learn_rate += 0.2;
-        }
-        learn_rate = learn_rate.max(0.001).min(0.8);
-        println!("{:?} {:?} {:?} {:?}", error, (error - last_error).abs(), close_error_count, learn_rate);
-        last_error = error;
-        println!("{}", i);
-        network.backward(vec![-0.5, 0.7, 0.2], learn_rate);
-        let out = network.forward(vec![0.2, -0.2]).unwrap();
-        // println!("{:?}", out);
-        network.backward(vec![0.1, -0.2, 0.8], learn_rate);
-        let out = network.forward(vec![0.6, 0.9]).unwrap();
-        // println!("{:?}", out);
-        network.backward(vec![-0.9, 0.9, 0.0], learn_rate);
-        if close_error_count > 8 {
-            learn_rate -= 0.2;
-        }
+    let mut t_inputs = vec![];
+    let mut t_outputs = vec![];
+    for i in 0..100 {
+        let i = i as f64;
+        println!("{}", ((i/100.0)*2.0*PI).sin());
+        t_inputs.push(vec![i]);
+        t_outputs.push(vec![((i/100.0)*2.0*PI).sin()]);
     }
-    let out = network.forward(vec![1.0, 0.0]);
-    println!("{:?} {:?}", st.elapsed(), out);
-    let out = network.forward(vec![0.2, -0.2]);
-    println!("{:?} {:?}", st.elapsed(), out);
-    let out = network.forward(vec![0.6, 0.9]);
-    println!("{:?} {:?}", st.elapsed(), out);
+    network.train(epochs, 0.0000005, &t_inputs, &t_outputs).unwrap();
+    for i in 0..t_inputs.len() {
+        let t_input = &t_inputs[i];
+        let t_output = &t_outputs[i];
+        println!("{:?} {:?}", network.forward(&t_input), t_output);
+    }
 }
 
 pub fn error_derivative(actual: f64, desired: f64) -> f64 {
