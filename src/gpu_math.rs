@@ -25,6 +25,28 @@ pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, second: &
     }
 }
 
+/// Adds the second buffer into the first buffer
+pub fn div_second_and_add(proque: &ProQue, first: &Buffer<f32>, second: &Buffer<f32>, div: f32) {
+    let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
+
+    let mult_kernel = proque
+        .kernel_builder("div_second_and_add")
+        .arg(first)
+        .arg(second)
+        .arg(div)
+        .build()
+        .expect("Failed to build add kernel");
+
+    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
+    unsafe {
+        mult_kernel
+            .cmd()
+            .global_work_size(SpatialDims::from(first.len()))
+            .local_work_size(SpatialDims::from(work_size))
+            .enq().unwrap();
+    }
+}
+
 pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, second: f32, target: &Buffer<f32>) {
     let max_wg = proque.max_wg_size().expect("Failed to get max workgroup size");
 

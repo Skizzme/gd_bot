@@ -1,6 +1,6 @@
 #![allow(unused)]
 use std::time::Instant;
-use num_format::Locale::wo;
+use num_format::Locale::{te, wo};
 
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
 use ocl::enums::WriteSrc;
@@ -149,7 +149,7 @@ impl Network {
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
                 .kernel_builder("forward")
-                .arg(match i { 1 => 0, _ => 1 })
+                .arg(match i { 1 => 0, _ => 1 }) // match i { 1 => 0, _ => 1 }
                 .arg(layer_in_size as u64)
                 .arg(layer_size as u64)
                 .arg(weights_offset as u64)
@@ -185,7 +185,7 @@ impl Network {
             // println!("Created final activation kernel {:?}", st.elapsed());
             st = Instant::now();
 
-            cl_utils::execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
+            execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
 
             // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
         }
@@ -197,13 +197,13 @@ impl Network {
     }
 
     // TODO: implement proper training, using averaged gradients etc
-    pub fn backward(&self, mut target: &Vec<f32>, learn_rate: f32) {
+    pub fn backward(&self, mut target: &Vec<f32>, learn_rate: f32, weight_mods: &Buffer<f32>, bias_mods: &Buffer<f32>) {
         let max_wg = self.gpu_proque.max_wg_size().expect("Failed to get max workgroup size");
         let target_buf = cl_utils::new_buffer(&self.gpu_proque, target.len());
         target_buf.write(target).enq().unwrap();
 
         let first_senses = cl_utils::new_buffer(&self.gpu_proque, target.len());
-        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &first_senses);;
+        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &first_senses);
         let mut prev_layer_sensitivities = &first_senses;
 
         unsafe {
@@ -226,6 +226,8 @@ impl Network {
                     .arg(prev_layer_sensitivities)
                     .arg(&self.gpu_weights)
                     .arg(&self.gpu_biases)
+                    .arg(weight_mods)
+                    .arg(bias_mods)
                     .arg(layer_sensitivities)
                     .build()
                     .expect("failed to build backward kernel");
@@ -238,11 +240,15 @@ impl Network {
     }
 
     // TODO: Train off of averages, this is just a test. try to use gpu for as much as possible (taking averages etc).
-    pub fn train<T: Into<Option<f32>>>(&self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, learn_rate: f32) -> Result<f32, String> {
+    pub fn train<T: Into<Option<f32>>, F>(&self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, learn_rate: f32, mut epoch_call_back: F) -> Result<f32, String>
+        where F: FnMut(&Self)
+    {
         let target_error = target_error.into();
         if inputs.len() != outputs.len() {
             return Err("Different length of input sets to output sets".to_string())
         }
+        let mut inputs = inputs.clone();
+        let mut outputs = outputs.clone();
         let mut i = 0u32;
         let mut last_error = 1f32;
         let mut close_error_count = 0;
@@ -250,10 +256,13 @@ impl Network {
         let mut last_print = Instant::now();
         let p_t_err = match target_error {None => "None".to_string(), Some(val) => format!("{:.4}", val).to_string()};
         println!("\nBeginning network training.\n  Samples: {}\n  Target-Error: {}\n  Max-Epochs: {}", inputs.len(), p_t_err.as_str(), epochs);
+        let weight_mods = cl_utils::new_buffer(&self.gpu_proque, self.gpu_weights.len());
+        let bias_mods = cl_utils::new_buffer(&self.gpu_proque, self.gpu_biases.len());
+        let mut batch_complete = 0;
         while i < epochs {
             let mut error = 0.0;
             let mut error_sum = 0.0;
-            shuffle(inputs, outputs);
+            shuffle(&mut inputs, &mut outputs);
             // println!("{:?} {:?}", inputs, outputs);
             for j in 0..inputs.len() {
                 let input = &inputs[j];
@@ -265,14 +274,29 @@ impl Network {
                 // learn_rate = learn_rate.max(0.00001).min(0.4);
                 last_error = error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
-                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error, learn_rate, i, epochs, target_error);
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, target_error, out, expected);
                     last_print = Instant::now();
                 }
-                self.backward(expected, learn_rate);
+                let batch_size = 8;
+                if batch_complete >= batch_size {
+                    // println!("bat");
+                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
+                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
+                    // weight_mods.cmd().fill(0.0, None).enq();
+                    // bias_mods.cmd().fill(0.0, None).enq();
+                    // batch_complete = 0;
+                }
+                self.backward(expected, learn_rate, &weight_mods, &bias_mods);
+                batch_complete += 1;
             }
+            // println!("{:?}", cl_utils::buf_read(&weight_mods));
             error_sum /= inputs.len() as f32;
+            if i % 3 == 0 {
+                epoch_call_back(self);
+            }
             println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error_sum, learn_rate, i, epochs, target_error);
-            if target_error.is_some() && error <= target_error.unwrap() {
+            if target_error.is_some() && error_sum <= target_error.unwrap() {
+                last_error = error_sum;
                 break;
             }
             i += 1;

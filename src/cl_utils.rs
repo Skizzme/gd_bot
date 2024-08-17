@@ -7,6 +7,7 @@ use rand::{random, Rng};
 pub fn new_buffer<T: ocl::OclPrm>(pro_que: &ProQue, size: usize) -> Buffer<T> {
     new_buffer_f(pro_que, size, T::default())
 }
+
 pub fn new_buffer_f<T: ocl::OclPrm>(pro_que: &ProQue, size: usize, fill: T) -> Buffer<T> {
     Buffer::builder()
         .queue(pro_que.queue().clone())

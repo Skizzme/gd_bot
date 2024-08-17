@@ -25,16 +25,33 @@ void atomicAdd_g_f(volatile __global float *addr, float val)
 }
 
 float sigmoid(float val) {
-    return val;
-//    return 1 / (1 + exp(-val)) * 2 - 1;
+//    printf("v: %f, %f\n", max(val, 0.0f), val);
+//    return max(val, 0.0f);
+//    return val;
+    return 1 / (1 + exp(-val)) * 2 - 1;
 }
 
 float sigmoid_derivative(float value) {
-//    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
-    return 1.0;
+//    if (value > 0) {
+//        return 1.0;
+//    } else {
+//        return 0.0;
+//    }
+//    return 1.0;
+    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
 }
 
-__kernel void forward(int apply_activations_in, ulong input_length, ulong layer_len, ulong weights_offset, ulong biases_offset, __constant float* weights, __constant float* biases, __constant float* input, __global float* output) {
+__kernel void forward(
+    int apply_activations_in,
+    ulong input_length,
+    ulong layer_len,
+    ulong weights_offset,
+    ulong biases_offset,
+    __constant float* weights,
+    __constant float* biases,
+    __constant float* input,
+    __global float* output
+) {
     int x = get_global_id(0);
     int y = get_global_id(1);
     float in = input[y];
@@ -43,9 +60,9 @@ __kernel void forward(int apply_activations_in, ulong input_length, ulong layer_
     }
     int w_ind =(input_length*x)+y + weights_offset;
     float value = input[y]*weights[w_ind];
-    printf("before %f\n", output[x]);
-    atomicAdd_g_f(&output[x], 0.2327);
-    printf("after %f\n", output[x]);
+//    printf("before %f\n", output[x]);
+//    atomicAdd_g_f(&output[x], 0.2327);
+//    printf("after %f\n", output[x]);
 //    printf("x %zu y %zu wv %f bi %zu bv %f wi %zu v %f\n", x, y, weights[w_ind], (uint) (y+biases_offset), biases[x+biases_offset], w_ind, value);
 //    printf("in %f activated %zu\n", in, apply_activations_in);
     atomicAdd_g_f(&output[x], value);
@@ -67,7 +84,9 @@ __kernel void random_buf(__global float* buffer, ulong randoms) {
     int i = get_global_id(0);
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
-    res = (res * 2.0 - 1.0) / 50.0; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+    // * 2.0 - 1.0 // for -1.0 to 1.0 values
+    res = (res * 2.0 - 1.0 ) / 50.0; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+//    printf("RES: %f\n", res);
     buffer[i] = res;
 }
 
@@ -86,26 +105,43 @@ float error_derivative(float actual, float desired) {
     return 2.0 * (actual - desired);
 }
 
-__kernel void backward(ulong input_length, ulong weights_offset, ulong biases_offset, float learn_rate, __global float* inputs, __global float* layer_output, __global float* sensitivities, __global float* weights, __global float* biases, __global float* gradients_out) {
+__kernel void backward(
+    ulong input_length,
+    ulong weights_offset,
+    ulong biases_offset,
+    float learn_rate,
+    __global float* inputs,
+    __global float* layer_output,
+    __global float* sensitivities,
+    __global float* weights,
+    __global float* biases,
+    __global float* weight_mods,
+    __global float* bias_mods,
+    __global float* gradients_out
+) {
     int x = get_global_id(0);
     int y = get_global_id(1);
-    ulong weight_index = (input_length*x)+y + weights_offset;
+    ulong weight_index = (input_length*x)+y + weights_offset; // might supposed to be (input_length*x)+y + weights_offset
     ulong bias_index = x+biases_offset;
+
     float gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
     atomicAdd_g_f(&gradients_out[y], weights[weight_index]*gradient);
+
     float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
     if (!isnan(new_weight)) {
+//        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
         weights[weight_index] = new_weight;
     } else {
-        weights[weight_index] = 0.0;
+//        weights[weight_index] = 0.0;
     }
 
     if (y == 0) {
         float new_bias = biases[bias_index] - learn_rate * gradient;
         if (!isnan(new_bias)) {
+//            bias_mods[bias_index] -= learn_rate * gradient;
             biases[bias_index] = new_bias;
         } else {
-            biases[bias_index] = 0.0;
+//            biases[bias_index] = 0.0;
         }
     }
 }
@@ -113,6 +149,11 @@ __kernel void backward(ulong input_length, ulong weights_offset, ulong biases_of
 __kernel void multiply(__global float* first, __global float* second, __global float* target) {
     int index = get_global_id(0);
     target[index] = first[index] * second[index];
+}
+
+__kernel void div_second_and_add(__global float* first, __global float* second, float div) {
+    int index = get_global_id(0);
+    first[index] = first[index] + (second[index] / div);
 }
 
 __kernel void multiply_single(__global float* first, float second, __global float* target) {
