@@ -44,7 +44,7 @@ float sigmoid_derivative(float value) {
 //    return exp(value) / pow(exp(value) + 1.0, 2.0);
 //    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
 //    return (8.0*exp(4*value)) / pow(exp(4*value) + 1.0, 2.0);
-    return 1 - ((value) * (value));
+    return 1 - (sigmoid(value) * sigmoid(value));
 //    return cos(value);
 }
 
@@ -138,12 +138,12 @@ __kernel void backward(
 
     float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
     if (!isnan(new_weight)) {
-        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
+//        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
 //        weight_mods[weight_index] += new_weight - weights[weight_index];
 //        if (weights[weight_index] > 1.0 || weights[weight_index] < -1.0) {
 //            weights[weight_index] = 0.1;
 //        }
-//        weights[weight_index] = new_weight;
+        weights[weight_index] = new_weight;
     } else {
 //        weights[weight_index] = 0.0;
 //        printf("set weight %d to 0.0 %f %f %f %f %f\n", weight_index, weights[weight_index], sigmoid(inputs[y]), gradient, sensitivities[x], layer_output[x]);

@@ -56,9 +56,9 @@ fn main() {
     while x < samples {
         let mut y = 0f32;
         while y < samples {
-            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
+            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { -1.0 };
             let inp = vec![x/samples, y/samples];
-            let out = vec![classification, 1.0-classification];
+            let out = vec![classification];
             if classification == 0.0 {
                 cl_1_i.push(inp);
                 cl_1_o.push(out); // + degrees.sin().powi(2)
@@ -259,8 +259,10 @@ impl ScreenTrait for MainScreen {
         for i in 0..self.last_outputs.len() {
             let x = self.last_outputs[i].0[0];
             let y = self.last_outputs[i].0[1];
-            let output = &self.last_outputs[i].1;
-            Color4f(0.0, output[1], output[0], 1.0);
+            let output = &self.last_outputs[i].1[0];
+            let green = output / 2.0 + 1.0;
+            let blue = -output / 2.0 + 1.0;
+            Color4f(0.0, green, blue, 1.0);
             Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
         }
         End();
