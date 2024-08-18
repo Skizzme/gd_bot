@@ -26,25 +26,25 @@ void atomicAdd_g_f(volatile __global float *addr, float val)
 
 float sigmoid(float val) {
 //    printf("v: %f, %f\n", max(val, 0.0f), val);
-    if (val > 0.0) { return val; } else { return 0.02*val; }
 //    return max(val, 0.0f);
+//    if (val > 0.0) { return val; } else { return 0.02*val; }
 //    return val;
 //    return 1 / (1 + exp(-val));
 //    return 1 / (1 + exp(-val)) * 2 - 1;
 //    return 1 / (1 + exp(-val*4)) * 2 - 1;
-//    return (exp(val) - exp(-val)) / (exp(val) + exp(-val));
+    return (exp(val) - exp(-val)) / (exp(val) + exp(-val));
 //    return sin(val);
 }
 
 float sigmoid_derivative(float value) {
 //    value = sigmoid(value);
 //    if (value > 0) { return 1.0; } else { return 0.0; }
-    if (value > 0) { return 1.0; } else { return 0.02; }
+//    if (value > 0) { return 1.0; } else { return 0.02; }
 //    return 1.0;
 //    return exp(value) / pow(exp(value) + 1.0, 2.0);
 //    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
 //    return (8.0*exp(4*value)) / pow(exp(4*value) + 1.0, 2.0);
-//    return 1 - (sigmoid(value) * sigmoid(value));
+    return 1 - ((value) * (value));
 //    return cos(value);
 }
 
@@ -65,7 +65,7 @@ __kernel void forward(
     if (apply_activations_in == 1) {
         in = sigmoid(in);
     }
-    int w_ind = (input_length*x)+y + weights_offset;
+    int w_ind =(input_length*x)+y + weights_offset;
     float value = input[y]*weights[w_ind];
 //    printf("before %f\n", output[x]);
 //    atomicAdd_g_f(&output[x], 0.2327);
@@ -109,7 +109,8 @@ __kernel void cost(__constant float* values, __constant float* target, __global 
 }
 
 float error_derivative(float actual, float desired) {
-    return 2.0 * (actual - desired);
+//    return actual - desired; // category
+    return 2.0 * (actual - desired); // prediction
 }
 
 __kernel void backward(
@@ -137,8 +138,11 @@ __kernel void backward(
 
     float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
     if (!isnan(new_weight)) {
-//        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
-        weight_mods[weight_index] += new_weight - weights[weight_index];
+        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
+//        weight_mods[weight_index] += new_weight - weights[weight_index];
+//        if (weights[weight_index] > 1.0 || weights[weight_index] < -1.0) {
+//            weights[weight_index] = 0.1;
+//        }
 //        weights[weight_index] = new_weight;
     } else {
 //        weights[weight_index] = 0.0;
@@ -149,8 +153,9 @@ __kernel void backward(
         float new_bias = biases[bias_index] - learn_rate * gradient;
         if (!isnan(new_bias)) {
 //            bias_mods[bias_index] -= learn_rate * gradient; // maybe incorrect value
-            bias_mods[bias_index] += new_bias - biases[bias_index];
+//            bias_mods[bias_index] += new_bias - biases[bias_index];
 //            biases[bias_index] = new_bias;
+//            biases[bias_index] = 0.0;
         } else {
 //            biases[bias_index] = 0.0;
 //            printf("set bias %d to 0.0\n", bias_index);

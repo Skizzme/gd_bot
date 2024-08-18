@@ -2,15 +2,11 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-2f3234\input\CompileSource:37:20: error: expected ';' after return statement
-    return sin(val)
-                   ^
-                   ;
-C:\Users\farre\AppData\Local\Temp\comgr-2f3234\input\CompileSource:48:22: error: expected ';' after return statement
-    return cos(value)
-                     ^
-                     ;
-2 errors generated.
+C:\Users\farre\AppData\Local\Temp\comgr-2af810\input\CompileSource:157:37: error: expected ';' after expression
+            biases[bias_index] = 0.0
+                                    ^
+                                    ;
+1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
 

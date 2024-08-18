@@ -27,7 +27,7 @@ fn gen_index<R: Rng + ?Sized>(rng: &mut R, ubound: usize) -> usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Network {
     // Layer weights are flat, not a matrix
     // weights: Vec<f32>,
@@ -38,18 +38,18 @@ pub struct Network {
     // nodes, weights_offset, biases_offset
     layers: Vec<(usize, usize, usize)>,
 
-    gpu_proque: ProQue,
+    pub gpu_proque: ProQue,
     // A single buffer containing all the weights/biases, so fewer calls to gpu
     // Values will be gotten based off of the layer sizes and offsets etc
-    gpu_weights: Buffer<f32>,
-    gpu_biases: Buffer<f32>,
+    pub gpu_weights: Buffer<f32>,
+    pub gpu_biases: Buffer<f32>,
     // Individual output buffers for each layer, so each layer can have different sizes
     // Inputs to next layer will be outputs of last layer
-    gpu_layer_bufs: Vec<Buffer<f32>>,
+    pub gpu_layer_bufs: Vec<Buffer<f32>>,
     // Stores a buffer on the GPU for each layer's sensitivities/gradients
     // Only used for back propagation
-    gpu_layer_sensitivities: Vec<Buffer<f32>>,
-    gpu_out_buf: Buffer<f32>,
+    pub gpu_layer_sensitivities: Vec<Buffer<f32>>,
+    pub gpu_out_buf: Buffer<f32>,
 }
 
 impl Network {
@@ -77,8 +77,8 @@ impl Network {
         layer_buffers.push(cl_utils::new_buffer(&pro_que, layer_inputs));
         network_layers.push((layers[0], 0, 0));
 
-        let mut weight_offset = 0usize;
-        let mut bias_offset = 0usize;
+        let mut weight_offset = 0;
+        let mut bias_offset = layers[0];
         // First value would be the plain inputs, so start creating layers with sizes after
         for i in 1..layers.len() {
             let layer_size = *layers.get(i).unwrap();
@@ -86,11 +86,12 @@ impl Network {
             let layer: Buffer<f32> = cl_utils::new_buffer(&pro_que, layer_size);
             layer_buffers.push(layer);
 
+            println!("{} {} {}", i, bias_offset, weight_offset);
             network_layers.push((layer_size, weight_offset, bias_offset));
             layer_sensitivities.push(cl_utils::new_buffer(&pro_que, layer_inputs));
 
-            weight_offset += layer_size*layer_inputs;
             bias_offset += layer_size;
+            weight_offset += layer_size * layer_inputs;
 
             // Keep track of the input size for the next layer
             layer_inputs = layer_size;
@@ -100,13 +101,13 @@ impl Network {
         // println!("\nStoring network on GPU...");
         let weight_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, weight_offset);
         // Init network's weights randomly using GPU
-        cl_utils::randomize_buffer(&weight_buf, 256, 30.0, &pro_que);
+        cl_utils::randomize_buffer(&weight_buf, 256, 7.0, &pro_que);
 
         let biases_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, bias_offset);
         // Init network's biases randomly using GPU
-        cl_utils::randomize_buffer(&biases_buf, 256, 30.0, &pro_que);
+        cl_utils::randomize_buffer(&biases_buf, 256, 100.0, &pro_que);
 
-        println!("{:?}", cl_utils::buf_read(&weight_buf));
+        // println!("{:?}", cl_utils::buf_read(&weight_buf));
 
         println!("Stored network on GPU {:?}\n", st.elapsed());
         println!("{}", weight_buf.len());
@@ -151,7 +152,7 @@ impl Network {
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
                 .kernel_builder("forward")
-                .arg(match i { 1 => 0, _ => 1 }) // match i { 1 => 0, _ => 1 }
+                .arg(1) // match i { 1 => 0, _ => 1 }
                 .arg(layer_in_size as u64)
                 .arg(layer_size as u64)
                 .arg(weights_offset as u64)
@@ -174,25 +175,25 @@ impl Network {
             }
 
             layer_in_size = self.layers[i].0;
-            println!("{:?} {:?}", i, cl_utils::buf_read(&layer_buf));
+            // println!("{:?} {:?}", i, cl_utils::buf_read(&layer_buf));
             buf = layer_buf;
         }
 
-        // unsafe {
-        //     let activation_kernel = self.gpu_proque
-        //         .kernel_builder("activation")
-        //         .arg(buf)
-        //         .arg(&self.gpu_out_buf)
-        //         .build().unwrap();
-        //
-        //     // println!("Created final activation kernel {:?}", st.elapsed());
-        //     st = Instant::now();
-        //
-        //     execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
-        //
-        //     // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
-        // }
-        buf.copy(&self.gpu_out_buf, None, None).enq();
+        unsafe {
+            let activation_kernel = self.gpu_proque
+                .kernel_builder("activation")
+                .arg(buf)
+                .arg(&self.gpu_out_buf)
+                .build().unwrap();
+
+            // println!("Created final activation kernel {:?}", st.elapsed());
+            st = Instant::now();
+
+            execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
+
+            // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
+        }
+        // buf.copy(&self.gpu_out_buf, None, None).enq();
 
         st = Instant::now();
         // println!("\nReading network output {:?}", st.elapsed());
@@ -281,30 +282,35 @@ impl Network {
                     println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, target_error, out, expected);
                     last_print = Instant::now();
                 }
-                let batch_size = 32;
+                self.backward(expected, learn_rate, &weight_mods, &bias_mods);
+                batch_complete += 1;
+                let batch_size = 1;
                 if batch_complete >= batch_size {
-                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
-                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
-                    weight_mods.cmd().fill(0.0, None).enq();
-                    bias_mods.cmd().fill(0.0, None).enq();
+                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
+                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
+                    // weight_mods.cmd().fill(0.0, None).enq();
+                    // bias_mods.cmd().fill(0.0, None).enq();
                     // println!("bat");
                     batch_complete = 0;
                 }
-                self.backward(expected, learn_rate, &weight_mods, &bias_mods);
-                batch_complete += 1;
                 // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
             }
             // println!("{:?}", cl_utils::buf_read(&weight_mods));
-            error_sum /= inputs.len() as f32;
+            gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, inputs.len() as f32);
+            gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, inputs.len() as f32);
+            weight_mods.cmd().fill(0.0, None).enq();
+            bias_mods.cmd().fill(0.0, None).enq();
+            error_sum /= inputs.len() as f32 / 2.0;
             // learn_rate += (last_error - error_sum) / 5.0;
-            learn_rate += 5.0 / (last_error - error_sum) / 4000.0;
-            println!("lear: {}", 5.0 / (last_error - error_sum) / 4000.0);
-            learn_rate = learn_rate.max(0.00001).min(0.07);
+            // learn_rate += 5.0 / (last_error - error_sum) / 4000.0;
+            // // println!("lear: {}", 5.0 / (last_error - error_sum) / 4000.0);
+            // learn_rate = learn_rate.max(0.00001).min(0.1);
             last_error = error_sum;
             if i % 5 == 0 {
                 epoch_call_back(self);
             }
             println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error_sum, learn_rate, i, epochs, target_error);
+
             if target_error.is_some() && error_sum <= target_error.unwrap() {
                 last_error = error_sum;
                 break;
@@ -324,6 +330,15 @@ impl Network {
             error += (values[i]-target[i]).powf(2.0);
         }
         error
+    }
+
+    pub fn binary_loss(&self, values: &Vec<f32>, target: &Vec<f32>) -> f32 {
+        let mut loss = 0f32;
+        for i in 0..values.len() {
+            loss = loss - target[i] * values[i].abs().ln(); // TODO abs is temp
+        }
+
+        loss
     }
 
     pub fn layers(&self) -> &Vec<(usize, usize, usize)> {
