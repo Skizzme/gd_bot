@@ -63,9 +63,11 @@ __kernel void forward(
     int y = get_global_id(1); // in dims
     float in = input[y];
     if (apply_activations_in == 1) {
+//        printf("b %f a %f", in, sigmoid(in));
         in = sigmoid(in);
     }
     int w_ind =(input_length*x)+y + weights_offset;
+//    printf("ind: %d\n", w_ind);
     float value = input[y]*weights[w_ind];
 //    printf("before %f\n", output[x]);
 //    atomicAdd_g_f(&output[x], 0.2327);
@@ -92,7 +94,7 @@ __kernel void random_buf(__global float* buffer, ulong randoms, float div) {
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
     // * 2.0 - 1.0 // for -1.0 to 1.0 values
-    res = (res * 2.0 - 1.0 ) / div; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+    res = (res ) / div; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
 //    printf("RES: %f\n", res);
     buffer[i] = res;
 }
@@ -129,37 +131,20 @@ __kernel void backward(
 ) {
     int x = get_global_id(0); // out dims
     int y = get_global_id(1); // in dims
-    ulong weight_index = (input_length*x)+y + weights_offset; // might supposed to be (input_length*x)+y + weights_offset
+    ulong weight_index = (input_length * x) + y + weights_offset;
     ulong bias_index = x+biases_offset;
 
     float gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
-//    printf("som %f %f %f\n", gradient * weights[weight_index], gradient, weights[weight_index]);
     atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
 
     float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
-    if (!isnan(new_weight)) {
-//        weight_mods[weight_index] -= learn_rate * sigmoid(inputs[y]) * gradient;
-//        weight_mods[weight_index] += new_weight - weights[weight_index];
-//        if (weights[weight_index] > 1.0 || weights[weight_index] < -1.0) {
-//            weights[weight_index] = 0.1;
-//        }
-        weights[weight_index] = new_weight;
-    } else {
-//        weights[weight_index] = 0.0;
-//        printf("set weight %d to 0.0 %f %f %f %f %f\n", weight_index, weights[weight_index], sigmoid(inputs[y]), gradient, sensitivities[x], layer_output[x]);
-    }
+    weight_mods[weight_index] += new_weight - weights[weight_index];
+//    weights[weight_index] = new_weight;
 
     if (y == 0) {
         float new_bias = biases[bias_index] - learn_rate * gradient;
-        if (!isnan(new_bias)) {
-//            bias_mods[bias_index] -= learn_rate * gradient; // maybe incorrect value
-//            bias_mods[bias_index] += new_bias - biases[bias_index];
-//            biases[bias_index] = new_bias;
-//            biases[bias_index] = 0.0;
-        } else {
-//            biases[bias_index] = 0.0;
-//            printf("set bias %d to 0.0\n", bias_index);
-        }
+        bias_mods[bias_index] += new_bias - biases[bias_index];
+//        biases[bias_index] = new_bias;
     }
 }
 

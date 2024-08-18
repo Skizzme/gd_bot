@@ -2,10 +2,9 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-2af810\input\CompileSource:157:37: error: expected ';' after expression
-            biases[bias_index] = 0.0
-                                    ^
-                                    ;
+C:\Users\farre\AppData\Local\Temp\comgr-217ec6\input\CompileSource:38:12: error: expected '(' after 'if'
+        if signbit(val) {
+           ^
 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################

@@ -48,41 +48,51 @@ fn main() {
     let mut t_outputs: Vec<Vec<f32>> = vec![];
 
     let samples = 20f32;
-    let mut cl_1_i = vec![];
-    let mut cl_1_o = vec![];
-    let mut cl_2_i = vec![];
-    let mut cl_2_o = vec![];
-    let mut x = 0f32;
-    while x < samples {
-        let mut y = 0f32;
-        while y < samples {
-            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { -1.0 };
-            let inp = vec![x/samples, y/samples];
-            let out = vec![classification];
-            if classification == 0.0 {
-                cl_1_i.push(inp);
-                cl_1_o.push(out); // + degrees.sin().powi(2)
-            } else {
-                cl_2_i.push(inp);
-                cl_2_o.push(out); // + degrees.sin().powi(2)
-            }
-            y+=1.0;
-        }
-        x+= 1.0;
-    }
-    network::shuffle(&mut cl_1_i, &mut cl_1_o);
-    network::shuffle(&mut cl_2_i, &mut cl_2_o);
-    if cl_2_i.len() > cl_1_i.len() {
-        for i in 0..(cl_2_i.len()-cl_1_i.len()) {
-            cl_2_i.swap_remove(0);
-            cl_2_o.swap_remove(0);
-        }
+
+    let samples = 20;
+    for i in 0..samples {
+        let i = i as f32;
+        // println!("{}", ((i/samples as f32)*2.0*PI).sin());
+        t_inputs.push(vec![i/samples as f32]);
+        let degrees = (i/samples as f32)*2.0*PI;
+        t_outputs.push(vec![degrees.sin()]); // + degrees.sin().powi(2)
     }
 
-    t_inputs.append(&mut cl_1_i);
-    t_inputs.append(&mut cl_2_i);
-    t_outputs.append(&mut cl_1_o);
-    t_outputs.append(&mut cl_2_o);
+    // let mut cl_1_i = vec![];
+    // let mut cl_1_o = vec![];
+    // let mut cl_2_i = vec![];
+    // let mut cl_2_o = vec![];
+    // let mut x = 0f32;
+    // while x < samples {
+    //     let mut y = 0f32;
+    //     while y < samples {
+    //         let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
+    //         let inp = vec![x/samples, y/samples];
+    //         let out = vec![classification, 1.0-classification];
+    //         if classification == 0.0 {
+    //             cl_1_i.push(inp);
+    //             cl_1_o.push(out); // + degrees.sin().powi(2)
+    //         } else {
+    //             cl_2_i.push(inp);
+    //             cl_2_o.push(out); // + degrees.sin().powi(2)
+    //         }
+    //         y+=1.0;
+    //     }
+    //     x+= 1.0;
+    // }
+    // network::shuffle(&mut cl_1_i, &mut cl_1_o);
+    // network::shuffle(&mut cl_2_i, &mut cl_2_o);
+    // if cl_2_i.len() > cl_1_i.len() {
+    //     for i in 0..(cl_2_i.len()-cl_1_i.len()) {
+    //         cl_2_i.swap_remove(0);
+    //         cl_2_o.swap_remove(0);
+    //     }
+    // }
+    //
+    // t_inputs.append(&mut cl_1_i);
+    // t_inputs.append(&mut cl_2_i);
+    // t_outputs.append(&mut cl_1_o);
+    // t_outputs.append(&mut cl_2_o);
 
     // println!("CL1: {:?} {:?}", cl_1_i, cl_1_o);
     // println!("CL2: {:?} {:?}", cl_2_i, cl_2_o);
@@ -97,8 +107,8 @@ fn main() {
             let mut window = unsafe {
                 Window::create(
                     "Simulation",
-                    1920 / 2,
-                    1080 / 2,
+                    1920,
+                    1080,
                     "src\\assets\\fonts\\",
                     "",
                     vec![],
@@ -121,22 +131,31 @@ fn main() {
         let t_output = &t_outputs[i];
         println!("IN: {:?}, OUT: {:?}, EXPECTED: {:?}", t_input, network.forward(&t_input), t_output);
     }
+    send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
+    std::thread::sleep(Duration::from_millis(2000));
 
     network.train(epochs, 0.0000005, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
         let mut all = vec![];
-        let samples = 20f32;
-        let mut x = 0f32;
-        while x < samples {
-            let mut y = 0f32;
-            while y < samples {
-                let inp = vec![x/samples, y/samples];
-                all.push((inp.clone(), c_net.forward(&inp).unwrap()));
-                y+=1.0;
-            }
-            x+= 1.0;
+        let mut n_in = 0.0 as f32;
+        while n_in < 1.0 {
+            all.push((vec![n_in], (network.forward(&vec![n_in]).unwrap())));
+            n_in += 0.01;
         }
         send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
+        // let samples = 20f32;
+        // let mut x = 0f32;
+        // while x < samples {
+        //     let mut y = 0f32;
+        //     while y < samples {
+        //         let inp = vec![x/samples, y/samples];
+        //         all.push((inp.clone(), c_net.forward(&inp).unwrap()));
+        //         y+=1.0;
+        //     }
+        //     x+= 1.0;
+        // }
+        // send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
     }).unwrap();
+    // send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
     for i in 0..t_inputs.len() {
         let t_input = &t_inputs[i];
         let t_output = &t_outputs[i];
@@ -208,7 +227,7 @@ impl MainScreen {
                 if i < self.network_layers.len()-1 {
                     let (n_size, n_w_offset, n_b_offset) = self.network_layers[i+1];
                     for next_node in 0..n_size {
-                        let weight_index = (node * n_size) + next_node + n_w_offset;
+                        let weight_index = (next_node * size) + node + n_w_offset;
                         let weight = self.network_weights[weight_index];
                         // println!("{} {}", weight_index, weight);
                         let n_x = ((i+1) * hori_mult + 50) as f32;
@@ -225,7 +244,7 @@ impl MainScreen {
                         Vertex2f(x,y);
                         Vertex2f(n_x,n_y);
                         End();
-                        // window.fonts.get_font("ProductSans").unwrap().draw_string(12.0, format!("{:?}", weight_index), (x+n_x)/2.0, (y+n_y) / 2.0 + node as f32*14.0, Color::from_u32(0xffffffff));
+                        window.fonts.get_font("ProductSans").unwrap().draw_string(12.0, format!("{:?}", weight_index), (x+n_x)/2.0, (y+n_y) / 2.0 + node as f32*14.0, Color::from_u32(0xffffffff));
                     }
                 }
             }
@@ -243,29 +262,47 @@ impl ScreenTrait for MainScreen {
             Err(_) => {}
         }
         Disable(TEXTURE_2D);
+        Enable(BLEND);
+        Enable(LINE_SMOOTH);
+        LineWidth(2.0);
+        Hint(LINE_SMOOTH_HINT, NICEST);
         Enable(POINT_SMOOTH);
         PointSize(4.0);
         Hint(POINT_SMOOTH_HINT, NICEST);
-        Begin(POINTS);
+        PushMatrix();
+        Translatef(800.0, 0.0, 0.0);
+        Begin(LINE_STRIP);
         for i in 0..self.inputs.len() {
-            let x = self.inputs[i][0];
-            let y = self.inputs[i][1];
-            let output = &self.outputs[i];
-            Color4f(output[0], output[1], 0.0, 1.0);
-            Vertex2f(x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+            let input = self.inputs[i][0];
+            let output = self.outputs[i][0];
+            Color::from_u32(0xff0000ff).apply();
+            Vertex2f(10.0+input*700.0, output * 100.0 + 300.0);
         }
         End();
-        Begin(POINTS);
-        for i in 0..self.last_outputs.len() {
-            let x = self.last_outputs[i].0[0];
-            let y = self.last_outputs[i].0[1];
-            let output = &self.last_outputs[i].1[0];
-            let green = output / 2.0 + 1.0;
-            let blue = -output / 2.0 + 1.0;
-            Color4f(0.0, green, blue, 1.0);
-            Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        Begin(LINE_STRIP);
+        for (input, out) in &self.last_outputs {
+            Color::from_u32(0xffff00ff).apply();
+            Vertex2f(10.0+input[0]*700.0, out[0] * 100.0 + 300.0);
         }
         End();
+        PopMatrix();
+        // for i in 0..self.inputs.len() {
+        //     let x = self.inputs[i][0];
+        //     let y = self.inputs[i][1];
+        //     let output = &self.outputs[i];
+        //     Color4f(output[0], output[1], 0.0, 1.0);
+        //     Vertex2f(x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        // }
+        // End();
+        // Begin(POINTS);
+        // for i in 0..self.last_outputs.len() {
+        //     let x = self.last_outputs[i].0[0];
+        //     let y = self.last_outputs[i].0[1];
+        //     let output = &self.last_outputs[i].1;
+        //     Color4f(0.0, output[1], output[0], 1.0);
+        //     Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        // }
+        // End();
         self.draw_network(window);
     }
 

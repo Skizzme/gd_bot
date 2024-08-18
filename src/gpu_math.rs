@@ -14,7 +14,7 @@ pub fn mult(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, second: &
         .build()
         .expect("Failed to build multiply kernel");
 
-    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
+    let work_size = cl_utils::calc_ws(max_wg, first.len());
     unsafe {
         mult_kernel
             .cmd()
@@ -37,7 +37,7 @@ pub fn div_second_and_add(proque: &ProQue, first: &Buffer<f32>, second: &Buffer<
         .build()
         .expect("Failed to build add kernel");
 
-    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
+    let work_size = cl_utils::calc_ws(max_wg, first.len());
     unsafe {
         mult_kernel
             .cmd()
@@ -58,7 +58,7 @@ pub fn mult_single(proque: &ProQue, first_offset: usize, first: &Buffer<f32>, se
         .build()
         .expect("Failed to build multiply kernel");
 
-    let work_size = cl_utils::calculate_worksize(max_wg, first.len());
+    let work_size = cl_utils::calc_ws(max_wg, first.len());
     unsafe {
         mult_kernel
             .cmd()
@@ -89,7 +89,7 @@ pub fn mtrx_combine_columns(proque: &ProQue, matrix: Buffer<f32>, x_len: i32, y_
         kernel
             .cmd()
             .global_work_size(SpatialDims::from((x_len, y_len)))
-            .local_work_size(SpatialDims::from((cl_utils::calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize), cl_utils::calculate_worksize((max_wg as f32).sqrt() as usize, x_len as usize))))
+            .local_work_size(SpatialDims::from((cl_utils::calc_ws((max_wg as f32).sqrt() as usize, x_len as usize), cl_utils::calc_ws((max_wg as f32).sqrt() as usize, x_len as usize))))
             .enq()
             .expect("Failed to enq kernel")
     }
@@ -118,7 +118,7 @@ pub fn activate_and_error_derivative(pro_que: &ProQue, values: &Buffer<f32>, tar
         kernel
             .cmd()
             .global_work_size(SpatialDims::from(values.len()))
-            .local_work_size(SpatialDims::from(cl_utils::calculate_worksize(max_wg, values.len())))
+            .local_work_size(SpatialDims::from(cl_utils::calc_ws(max_wg, values.len())))
             .enq()
             .expect("Failed to enq kernel")
     }

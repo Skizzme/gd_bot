@@ -6,7 +6,7 @@ use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
 use ocl::enums::WriteSrc;
 use rand::{random, Rng, thread_rng};
 use crate::{cl_utils, gpu_math};
-use crate::cl_utils::{calculate_worksize, execute_kernel};
+use crate::cl_utils::{calc_ws, execute_kernel};
 use num_format::{Locale, ToFormattedString};
 use rand::seq::SliceRandom;
 
@@ -101,11 +101,11 @@ impl Network {
         // println!("\nStoring network on GPU...");
         let weight_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, weight_offset);
         // Init network's weights randomly using GPU
-        cl_utils::randomize_buffer(&weight_buf, 256, 7.0, &pro_que);
+        cl_utils::randomize_buffer(&weight_buf, 256, 4.0, &pro_que);
 
         let biases_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, bias_offset);
         // Init network's biases randomly using GPU
-        cl_utils::randomize_buffer(&biases_buf, 256, 100.0, &pro_que);
+        cl_utils::randomize_buffer(&biases_buf, 256, 10.0, &pro_que);
 
         // println!("{:?}", cl_utils::buf_read(&weight_buf));
 
@@ -130,7 +130,7 @@ impl Network {
         let mut layer_in_size = self.layers[0].0;
 
         if inputs.len() != layer_in_size {
-            return Err(format!("Input length is incorrect! Network input length is: {}", layer_in_size).to_string())
+            return Err(format!("Input length is incorrect! Network input length is: {}. Inputs length is: {}", layer_in_size, inputs.len()).to_string())
         }
 
         let mut st = Instant::now();
@@ -152,7 +152,7 @@ impl Network {
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
                 .kernel_builder("forward")
-                .arg(1) // match i { 1 => 0, _ => 1 }
+                .arg(match i { 1 => 0, _ => 1 }) // match i { 1 => 0, _ => 1 }
                 .arg(layer_in_size as u64)
                 .arg(layer_size as u64)
                 .arg(weights_offset as u64)
@@ -284,22 +284,21 @@ impl Network {
                 }
                 self.backward(expected, learn_rate, &weight_mods, &bias_mods);
                 batch_complete += 1;
-                let batch_size = 1;
+                let batch_size = 4;
                 if batch_complete >= batch_size {
-                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
-                    // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
-                    // weight_mods.cmd().fill(0.0, None).enq();
-                    // bias_mods.cmd().fill(0.0, None).enq();
-                    // println!("bat");
+                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, batch_size as f32);
+                    gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, batch_size as f32);
+                    weight_mods.cmd().fill(0.0, None).enq();
+                    bias_mods.cmd().fill(0.0, None).enq();
                     batch_complete = 0;
                 }
-                // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
             }
+            println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
             // println!("{:?}", cl_utils::buf_read(&weight_mods));
-            gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, inputs.len() as f32);
-            gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, inputs.len() as f32);
-            weight_mods.cmd().fill(0.0, None).enq();
-            bias_mods.cmd().fill(0.0, None).enq();
+            // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, inputs.len() as f32);
+            // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, inputs.len() as f32);
+            // weight_mods.cmd().fill(0.0, None).enq();
+            // bias_mods.cmd().fill(0.0, None).enq();
             error_sum /= inputs.len() as f32 / 2.0;
             // learn_rate += (last_error - error_sum) / 5.0;
             // learn_rate += 5.0 / (last_error - error_sum) / 4000.0;
