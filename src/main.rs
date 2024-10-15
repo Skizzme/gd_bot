@@ -49,53 +49,53 @@ fn main() {
 
     let samples = 20f32;
 
-    let samples = 20;
-    for i in 0..samples {
-        let i = i as f32;
-        // println!("{}", ((i/samples as f32)*2.0*PI).sin());
-        t_inputs.push(vec![i/samples as f32]);
-        let degrees = (i/samples as f32)*2.0*PI;
-        t_outputs.push(vec![degrees.sin()]); // + degrees.sin().powi(2)
+    let samples = 20f32;
+    // for i in 0..samples {
+    //     let i = i as f32;
+    //     // println!("{}", ((i/samples as f32)*2.0*PI).sin());
+    //     t_inputs.push(vec![i/samples as f32]);
+    //     let degrees = (i/samples as f32)*2.0*PI;
+    //     t_outputs.push(vec![degrees.sin()]); // + degrees.sin().powi(2)
+    // }
+
+    let mut cl_1_i = vec![];
+    let mut cl_1_o = vec![];
+    let mut cl_2_i = vec![];
+    let mut cl_2_o = vec![];
+    let mut x = 0f32;
+    while x < samples {
+        let mut y = 0f32;
+        while y < samples {
+            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
+            let inp = vec![x/samples, y/samples];
+            let out = vec![classification, 1.0-classification];
+            if classification == 0.0 {
+                cl_1_i.push(inp);
+                cl_1_o.push(out); // + degrees.sin().powi(2)
+            } else {
+                cl_2_i.push(inp);
+                cl_2_o.push(out); // + degrees.sin().powi(2)
+            }
+            y+=1.0;
+        }
+        x+= 1.0;
+    }
+    network::shuffle(&mut cl_1_i, &mut cl_1_o);
+    network::shuffle(&mut cl_2_i, &mut cl_2_o);
+    if cl_2_i.len() > cl_1_i.len() {
+        for i in 0..(cl_2_i.len()-cl_1_i.len()) {
+            cl_2_i.swap_remove(0);
+            cl_2_o.swap_remove(0);
+        }
     }
 
-    // let mut cl_1_i = vec![];
-    // let mut cl_1_o = vec![];
-    // let mut cl_2_i = vec![];
-    // let mut cl_2_o = vec![];
-    // let mut x = 0f32;
-    // while x < samples {
-    //     let mut y = 0f32;
-    //     while y < samples {
-    //         let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
-    //         let inp = vec![x/samples, y/samples];
-    //         let out = vec![classification, 1.0-classification];
-    //         if classification == 0.0 {
-    //             cl_1_i.push(inp);
-    //             cl_1_o.push(out); // + degrees.sin().powi(2)
-    //         } else {
-    //             cl_2_i.push(inp);
-    //             cl_2_o.push(out); // + degrees.sin().powi(2)
-    //         }
-    //         y+=1.0;
-    //     }
-    //     x+= 1.0;
-    // }
-    // network::shuffle(&mut cl_1_i, &mut cl_1_o);
-    // network::shuffle(&mut cl_2_i, &mut cl_2_o);
-    // if cl_2_i.len() > cl_1_i.len() {
-    //     for i in 0..(cl_2_i.len()-cl_1_i.len()) {
-    //         cl_2_i.swap_remove(0);
-    //         cl_2_o.swap_remove(0);
-    //     }
-    // }
-    //
-    // t_inputs.append(&mut cl_1_i);
-    // t_inputs.append(&mut cl_2_i);
-    // t_outputs.append(&mut cl_1_o);
-    // t_outputs.append(&mut cl_2_o);
+    t_inputs.append(&mut cl_1_i);
+    t_inputs.append(&mut cl_2_i);
+    t_outputs.append(&mut cl_1_o);
+    t_outputs.append(&mut cl_2_o);
 
-    // println!("CL1: {:?} {:?}", cl_1_i, cl_1_o);
-    // println!("CL2: {:?} {:?}", cl_2_i, cl_2_o);
+    println!("CL1: {:?} {:?}", cl_1_i, cl_1_o);
+    println!("CL2: {:?} {:?}", cl_2_i, cl_2_o);
 
     let s_t_inputs = t_inputs.clone();
     let s_t_outputs = t_outputs.clone();
@@ -136,24 +136,24 @@ fn main() {
 
     network.train(epochs, 0.0000005, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
         let mut all = vec![];
-        let mut n_in = 0.0 as f32;
-        while n_in < 1.0 {
-            all.push((vec![n_in], (network.forward(&vec![n_in]).unwrap())));
-            n_in += 0.01;
-        }
-        send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
-        // let samples = 20f32;
-        // let mut x = 0f32;
-        // while x < samples {
-        //     let mut y = 0f32;
-        //     while y < samples {
-        //         let inp = vec![x/samples, y/samples];
-        //         all.push((inp.clone(), c_net.forward(&inp).unwrap()));
-        //         y+=1.0;
-        //     }
-        //     x+= 1.0;
+        // let mut n_in = 0.0 as f32;
+        // while n_in < 1.0 {
+        //     all.push((vec![n_in], (network.forward(&vec![n_in]).unwrap())));
+        //     n_in += 0.01;
         // }
         // send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
+        let samples = 20f32;
+        let mut x = 0f32;
+        while x < samples {
+            let mut y = 0f32;
+            while y < samples {
+                let inp = vec![x/samples, y/samples];
+                all.push((inp.clone(), c_net.forward(&inp).unwrap()));
+                y+=1.0;
+            }
+            x+= 1.0;
+        }
+        send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
     }).unwrap();
     // send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
     for i in 0..t_inputs.len() {
@@ -269,40 +269,41 @@ impl ScreenTrait for MainScreen {
         Enable(POINT_SMOOTH);
         PointSize(4.0);
         Hint(POINT_SMOOTH_HINT, NICEST);
-        PushMatrix();
-        Translatef(800.0, 0.0, 0.0);
-        Begin(LINE_STRIP);
-        for i in 0..self.inputs.len() {
-            let input = self.inputs[i][0];
-            let output = self.outputs[i][0];
-            Color::from_u32(0xff0000ff).apply();
-            Vertex2f(10.0+input*700.0, output * 100.0 + 300.0);
-        }
-        End();
-        Begin(LINE_STRIP);
-        for (input, out) in &self.last_outputs {
-            Color::from_u32(0xffff00ff).apply();
-            Vertex2f(10.0+input[0]*700.0, out[0] * 100.0 + 300.0);
-        }
-        End();
-        PopMatrix();
+        // PushMatrix();
+        // Translatef(800.0, 0.0, 0.0);
+        // Begin(LINE_STRIP);
         // for i in 0..self.inputs.len() {
-        //     let x = self.inputs[i][0];
-        //     let y = self.inputs[i][1];
-        //     let output = &self.outputs[i];
-        //     Color4f(output[0], output[1], 0.0, 1.0);
-        //     Vertex2f(x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        //     let input = self.inputs[i][0];
+        //     let output = self.outputs[i][0];
+        //     Color::from_u32(0xff0000ff).apply();
+        //     Vertex2f(10.0+input*700.0, output * 100.0 + 300.0);
         // }
         // End();
-        // Begin(POINTS);
-        // for i in 0..self.last_outputs.len() {
-        //     let x = self.last_outputs[i].0[0];
-        //     let y = self.last_outputs[i].0[1];
-        //     let output = &self.last_outputs[i].1;
-        //     Color4f(0.0, output[1], output[0], 1.0);
-        //     Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        // Begin(LINE_STRIP);
+        // for (input, out) in &self.last_outputs {
+        //     Color::from_u32(0xffff00ff).apply();
+        //     Vertex2f(10.0+input[0]*700.0, out[0] * 100.0 + 300.0);
         // }
         // End();
+        // PopMatrix();
+        Begin(POINTS);
+        for i in 0..self.inputs.len() {
+            let x = self.inputs[i][0];
+            let y = self.inputs[i][1];
+            let output = &self.outputs[i];
+            Color4f(output[0], output[1], 0.0, 1.0);
+            Vertex2f(x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        }
+        End();
+        Begin(POINTS);
+        for i in 0..self.last_outputs.len() {
+            let x = self.last_outputs[i].0[0];
+            let y = self.last_outputs[i].0[1];
+            let output = &self.last_outputs[i].1;
+            Color4f(output[0], output[1], 0.0, 1.0);
+            Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
+        }
+        End();
         self.draw_network(window);
     }
 
@@ -310,7 +311,7 @@ impl ScreenTrait for MainScreen {
 
     }
 
-    fn event(&mut self, event: WindowEvent, window: &Window) {
+    unsafe fn event(&mut self, event: WindowEvent, window: &mut Window) {
 
     }
 

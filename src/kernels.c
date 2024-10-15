@@ -24,7 +24,7 @@ void atomicAdd_g_f(volatile __global float *addr, float val)
     } while( current.u32 != expected.u32 );
 }
 
-float sigmoid(float val) {
+float activate(float val) {
 //    printf("v: %f, %f\n", max(val, 0.0f), val);
 //    return max(val, 0.0f);
 //    if (val > 0.0) { return val; } else { return 0.02*val; }
@@ -36,15 +36,15 @@ float sigmoid(float val) {
 //    return sin(val);
 }
 
-float sigmoid_derivative(float value) {
-//    value = sigmoid(value);
+float activate_derivative(float value) {
+//    value = activate(value);
 //    if (value > 0) { return 1.0; } else { return 0.0; }
 //    if (value > 0) { return 1.0; } else { return 0.02; }
 //    return 1.0;
 //    return exp(value) / pow(exp(value) + 1.0, 2.0);
 //    return (2.0*exp(value)) / pow(exp(value) + 1.0, 2.0);
 //    return (8.0*exp(4*value)) / pow(exp(4*value) + 1.0, 2.0);
-    return 1 - (sigmoid(value) * sigmoid(value));
+    return 1 - (activate(value) * activate(value));
 //    return cos(value);
 }
 
@@ -54,6 +54,7 @@ __kernel void forward(
     ulong layer_len,
     ulong weights_offset,
     ulong biases_offset,
+    int has_biases,
     __constant float* weights,
     __constant float* biases,
     __constant float* input,
@@ -63,23 +64,15 @@ __kernel void forward(
     int y = get_global_id(1); // in dims
     float in = input[y];
     if (apply_activations_in == 1) {
-//        printf("b %f a %f", in, sigmoid(in));
-        in = sigmoid(in);
+//        printf("b %f a %f", in, activate(in));
+        in = activate(in);
     }
     int w_ind =(input_length*x)+y + weights_offset;
-//    printf("ind: %d\n", w_ind);
     float value = input[y]*weights[w_ind];
-//    printf("before %f\n", output[x]);
-//    atomicAdd_g_f(&output[x], 0.2327);
-//    printf("after %f\n", output[x]);
-//    printf("x %zu y %zu wv %f bi %zu bv %f wi %zu v %f\n", x, y, weights[w_ind], (uint) (y+biases_offset), biases[x+biases_offset], w_ind, value);
-//    printf("in %f activated %zu\n", in, apply_activations_in);
+
     atomicAdd_g_f(&output[x], value);
-//    if (x % 1000 == 0 && y % 100 == 0) {
-//        printf("w %lu b %lu wo %lu bo %lu %f\n", w_ind, x+biases_offset, weights_offset, biases_offset, weights[w_ind]);
-//    }
-//    barrier(CLK_GLOBAL_MEM_FENCE);
-    if (y == 0) {
+    barrier(CLK_GLOBAL_MEM_FENCE);
+    if (y == 0 && has_biases == 1) {
         atomicAdd_g_f(&output[x], biases[x+biases_offset]);
     }
 }
@@ -94,14 +87,14 @@ __kernel void random_buf(__global float* buffer, ulong randoms, float div) {
     ulong result = (((randoms + i*0xFF9D2D) * 0x5DEECE66DL + 0xBL) & ((1L << 48) -1)) >> 16;
     float res = ((float) result) / 4294967295.0;
     // * 2.0 - 1.0 // for -1.0 to 1.0 values
-    res = (res ) / div; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
+    res = (res * 2.0 - 1.0) / div; // This value division depends on the network size. If it's a big network it must be smaller, smaller network it must be larger.
 //    printf("RES: %f\n", res);
     buffer[i] = res;
 }
 
 __kernel void activation(__global float* values, __global float* target) {
     int i = get_global_id(0);
-    target[i] = sigmoid(values[i]);
+    target[i] = activate(values[i]);
 }
 
 __kernel void cost(__constant float* values, __constant float* target, __global float* output) {
@@ -111,14 +104,15 @@ __kernel void cost(__constant float* values, __constant float* target, __global 
 }
 
 float error_derivative(float actual, float desired) {
-//    return actual - desired; // category
-    return 2.0 * (actual - desired); // prediction
+    return actual - desired; // category
+//    return 2.0 * (actual - desired); // prediction
 }
 
 __kernel void backward(
     ulong input_length,
     ulong weights_offset,
     ulong biases_offset,
+    int has_biases,
     float learn_rate,
     __global float* inputs,
     __global float* layer_output,
@@ -134,18 +128,19 @@ __kernel void backward(
     ulong weight_index = (input_length * x) + y + weights_offset;
     ulong bias_index = x+biases_offset;
 
-    float gradient = sigmoid_derivative(layer_output[x]) * sensitivities[x];
-    atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
+    double gradient = activate_derivative(layer_output[x]) * sensitivities[x];
 
-    float new_weight = weights[weight_index] - learn_rate * sigmoid(inputs[y]) * gradient;
+//    double gradient = sensitivities[x];
+
+    float new_weight = weights[weight_index] - learn_rate * activate(inputs[y]) * gradient;
     weight_mods[weight_index] += new_weight - weights[weight_index];
-//    weights[weight_index] = new_weight;
 
-    if (y == 0) {
+    if (y == 0 && has_biases == 1) {
         float new_bias = biases[bias_index] - learn_rate * gradient;
         bias_mods[bias_index] += new_bias - biases[bias_index];
-//        biases[bias_index] = new_bias;
     }
+
+    atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
 }
 
 __kernel void multiply(__global float* first, __global float* second, __global float* target) {
@@ -175,7 +170,7 @@ __kernel void list_divide_inplace(__global float* top, float bottom) {
 
 __kernel void activate_and_error_derivative_calc(__global float* values, __global float* desired, __global float* out) {
     int i = get_global_id(0);
-    out[i] = error_derivative(sigmoid(values[i]), desired[i]);
+    out[i] = error_derivative(activate(values[i]), desired[i]);
 }
 
 // gradient = input * error_derivative(actual_output - desired_output)

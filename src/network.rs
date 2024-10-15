@@ -1,5 +1,7 @@
 #![allow(unused)]
-use std::time::Instant;
+
+use std::thread;
+use std::time::{Duration, Instant};
 use num_format::Locale::{te, wo};
 
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
@@ -101,11 +103,11 @@ impl Network {
         // println!("\nStoring network on GPU...");
         let weight_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, weight_offset);
         // Init network's weights randomly using GPU
-        cl_utils::randomize_buffer(&weight_buf, 256, 4.0, &pro_que);
+        cl_utils::randomize_buffer(&weight_buf, 256, 2.0, &pro_que);
 
         let biases_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, bias_offset);
         // Init network's biases randomly using GPU
-        cl_utils::randomize_buffer(&biases_buf, 256, 10.0, &pro_que);
+        cl_utils::randomize_buffer(&biases_buf, 256, 80.0, &pro_que);
 
         // println!("{:?}", cl_utils::buf_read(&weight_buf));
 
@@ -134,9 +136,9 @@ impl Network {
         }
 
         let mut st = Instant::now();
-        let mut buf = &self.gpu_layer_bufs[0];
+        let mut layer_in = &self.gpu_layer_bufs[0];
 
-        buf.write(inputs).enq().expect("Failed to write network inputs");
+        layer_in.write(inputs).enq().expect("Failed to write network inputs");
 
         // println!("\nInitialized network input {:?}", st.elapsed());
         st = Instant::now();
@@ -145,9 +147,8 @@ impl Network {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
             // println!("Forwarding layer: {:?}. size: {:?}, weight_offset: {:?}, bias_offset: {:?} {:?}", i, layer_size, weights_offset, biases_offset, match i { 1 => 0, _ => 1 });
 
-            let layer_buf = &self.gpu_layer_bufs[i];
-
-            layer_buf.cmd().fill(0.0, None).enq();
+            let layer_out = &self.gpu_layer_bufs[i];
+            layer_out.cmd().fill(0.0, None).enq();
 
             // Maybe create these kernels once in network creation, and only enq them here?
             let forward_kernel = self.gpu_proque
@@ -157,10 +158,11 @@ impl Network {
                 .arg(layer_size as u64)
                 .arg(weights_offset as u64)
                 .arg(biases_offset as u64)
+                .arg(if (i == self.layers.len()-1) { 0 } else { 1 })
                 .arg(&self.gpu_weights)
                 .arg(&self.gpu_biases)
-                .arg(buf)
-                .arg(layer_buf)
+                .arg(layer_in)
+                .arg(layer_out)
                 .build()
                 .unwrap();
 
@@ -176,20 +178,20 @@ impl Network {
 
             layer_in_size = self.layers[i].0;
             // println!("{:?} {:?}", i, cl_utils::buf_read(&layer_buf));
-            buf = layer_buf;
+            layer_in = layer_out;
         }
 
         unsafe {
             let activation_kernel = self.gpu_proque
                 .kernel_builder("activation")
-                .arg(buf)
+                .arg(layer_in)
                 .arg(&self.gpu_out_buf)
                 .build().unwrap();
 
             // println!("Created final activation kernel {:?}", st.elapsed());
             st = Instant::now();
 
-            execute_kernel(&self.gpu_proque, &activation_kernel, buf.len());
+            execute_kernel(&self.gpu_proque, &activation_kernel, layer_in.len());
 
             // println!("Enqueued activation kernel ({}) {:?}", wg_size_1d, st.elapsed());
         }
@@ -207,9 +209,9 @@ impl Network {
         let target_buf = cl_utils::new_buffer(&self.gpu_proque, target.len());
         target_buf.write(target).enq().unwrap();
 
-        let first_senses = cl_utils::new_buffer(&self.gpu_proque, target.len());
-        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &first_senses);
-        let mut prev_layer_sensitivities = &first_senses;
+        let sensitivities = cl_utils::new_buffer(&self.gpu_proque, target.len());
+        gpu_math::activate_and_error_derivative(&self.gpu_proque, &self.gpu_layer_bufs[self.layers.len()-1], &target_buf, &sensitivities);
+        let mut prev_layer_sensitivities = &sensitivities;
 
         unsafe {
             for i in (1..self.layers.len()).rev() {
@@ -221,16 +223,24 @@ impl Network {
 
                 // println!("{:?} {:?} {:?}", cl_utils::buf_read(&layer_sensitivities), layer_size, prev_size);
 
+                // let in_buf = match i {
+                //     0 => {
+                //         &self.gpu_layer_bufs[i-1]
+                //     },
+                //     1 => &self.gpu_layer_bufs[i-1],
+                // }
+
                 let st = Instant::now();
                 let back_kernel = self.gpu_proque
                     .kernel_builder("backward")
-                    .arg(prev_size as u64)
+                    .arg(prev_size as u64) // Input value length
                     .arg(weight_offset as u64)
                     .arg(bias_offset as u64)
+                    .arg(if (i == self.layers.len()-1) { 0 } else { 1 })
                     .arg(learn_rate)
-                    .arg(&self.gpu_layer_bufs[i-1])
-                    .arg(&self.gpu_layer_bufs[i])
-                    .arg(prev_layer_sensitivities)
+                    .arg(&self.gpu_layer_bufs[i-1]) // Input values
+                    .arg(&self.gpu_layer_bufs[i]) // Output values
+                    .arg(prev_layer_sensitivities) // Sensitivities
                     .arg(&self.gpu_weights)
                     .arg(&self.gpu_biases)
                     .arg(weight_mods)
@@ -293,7 +303,7 @@ impl Network {
                     batch_complete = 0;
                 }
             }
-            println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
+            // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
             // println!("{:?}", cl_utils::buf_read(&weight_mods));
             // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, inputs.len() as f32);
             // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, inputs.len() as f32);
@@ -315,6 +325,7 @@ impl Network {
                 break;
             }
             i += 1;
+            thread::sleep(Duration::from_millis(10));
         }
         println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
         println!("{:?}", cl_utils::buf_read(&self.gpu_weights));

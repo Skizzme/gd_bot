@@ -9,5 +9,5 @@ edition = "2021"
 num-format = "0.4.4"
 ocl = "0.19.7"
 rand = "0.8.5"
-RustUI = {version = "*", path = "../RustUI"}
+RustUI = {version = "*", path = "../RustUI - Copy (2)"}
 parking_lot = "0.12.3"

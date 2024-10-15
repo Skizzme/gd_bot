@@ -2,9 +2,33 @@
 
 ###################### OPENCL PROGRAM BUILD DEBUG OUTPUT ######################
 
-C:\Users\farre\AppData\Local\Temp\comgr-217ec6\input\CompileSource:38:12: error: expected '(' after 'if'
-        if signbit(val) {
-           ^
+C:\Users\farre\AppData\Local\Temp\comgr-d710b5\input\CompileSource:135:34: error: call to 'abs' is ambiguous
+    weight_mods[weight_index] += abs(new_weight - weights[weight_index]);
+                                 ^~~
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9657:21: note: candidate function
+uchar __ovld __cnfn abs(char x);
+                    ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9658:21: note: candidate function
+uchar __ovld __cnfn abs(uchar x);
+                    ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9669:22: note: candidate function
+ushort __ovld __cnfn abs(short x);
+                     ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9670:22: note: candidate function
+ushort __ovld __cnfn abs(ushort x);
+                     ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9681:20: note: candidate function
+uint __ovld __cnfn abs(int x);
+                   ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9682:20: note: candidate function
+uint __ovld __cnfn abs(uint x);
+                   ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9693:21: note: candidate function
+ulong __ovld __cnfn abs(long x);
+                    ^
+C:\constructicon\builds\gfx\two\23.20\drivers\compute\build\native\Release\x64\lc\tools\support\<stdin>:9694:21: note: candidate function
+ulong __ovld __cnfn abs(ulong x);
+                    ^
 1 error generated.
 Error: Failed to compile source (from CL or HIP source to LLVM IR).
 ###############################################################################
