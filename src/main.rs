@@ -20,8 +20,8 @@ use RustUI::components::window::Window;
 use RustUI::gl_binds::gl30;
 use RustUI::glfw::{Action, Key, Modifiers, Scancode, WindowEvent};
 use RustUI::WindowMode;
-
-use crate::network::Network;
+use crate::network::{gpu, Network};
+use crate::network::cpu::CPUNetwork;
 
 mod network;
 mod gpu_math;
@@ -39,8 +39,8 @@ fn main() {
         let arg_val = args[i];
         layers.push(usize::from_str(arg_val).unwrap());
     }
-    let network = Network::new(layers.clone(), None, None).unwrap();
-    println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights().to_formatted_string(&Locale::en), network.biases().to_formatted_string(&Locale::en), ((network.weights()+network.biases())*i32::BITS as usize/8).to_formatted_string(&Locale::en));
+    let mut network = CPUNetwork::new(layers.clone(), None, None).unwrap();
+    println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights_len().to_formatted_string(&Locale::en), network.biases_len().to_formatted_string(&Locale::en), ((network.weights_len()+network.biases_len())*i32::BITS as usize/8).to_formatted_string(&Locale::en));
     let st = Instant::now();
     // let mut t_inputs: Vec<Vec<f32>> = vec![vec![1.0, -0.87], vec![2.0, 0.2], vec![-1.0, 2.0], vec![0.0, -1.0]];
     // let mut t_outputs: Vec<Vec<f32>> = vec![vec![0.0, 0.25], vec![0.25, -0.6], vec![0.85, -0.2], vec![-0.25, 0.0]];
@@ -131,7 +131,7 @@ fn main() {
         let t_output = &t_outputs[i];
         println!("IN: {:?}, OUT: {:?}, EXPECTED: {:?}", t_input, network.forward(&t_input), t_output);
     }
-    send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
+    send.send((vec![], network.weights(), network.biases(), network.clone())).unwrap();
     std::thread::sleep(Duration::from_millis(2000));
 
     network.train(epochs, 0.0000005, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
@@ -153,7 +153,7 @@ fn main() {
             }
             x+= 1.0;
         }
-        send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
+        send.send((all, c_net.weights(), c_net.biases(), c_net.clone())).unwrap();
     }).unwrap();
     // send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
     for i in 0..t_inputs.len() {
@@ -168,15 +168,15 @@ struct MainScreen {
     inputs: Vec<Vec<f32>>,
     outputs: Vec<Vec<f32>>,
     last_outputs: Vec<(Vec<f32>, Vec<f32>)>,
-    receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, Network)>,
+    receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, CPUNetwork)>,
     network_weights: Vec<f32>,
     network_biases: Vec<f32>,
     network_layers: Vec<(usize, usize, usize)>,
-    network: Network,
+    network: CPUNetwork,
 }
 
 impl MainScreen {
-    pub unsafe fn new(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, Network)>, layers: Vec<(usize, usize, usize)>, network: Network) -> Self {
+    pub unsafe fn new(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, CPUNetwork)>, layers: Vec<(usize, usize, usize)>, network: CPUNetwork) -> Self {
         window.fonts.set_font_bytes("ProductSans", read("src/assets/fonts/ProductSans.ttf".replace("/", path::MAIN_SEPARATOR_STR)).unwrap()).load_font("ProductSans", false);
         MainScreen {
             last_outputs: vec![(vec![0.0], vec![0f32]); outputs.len()],
