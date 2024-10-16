@@ -190,7 +190,7 @@ impl Network for CPUNetwork {
 
                 error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
-                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, input, out, expected);
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%)", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0);//target_error, input, out, expected
                     last_print = Instant::now();
                 }
 

@@ -151,6 +151,7 @@ impl Network for GPUNetwork {
         // self.gpu_biases.cmd().fill(0.0, None).enq();
         // TODO last removed biases. would need to change the kernel calls' "has_biases" back
 
+        // self.gpu_proque.finish();
         for i in 1..self.layers.len() {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
             // println!("Forwarding layer: {:?}. size: {:?}, weight_offset: {:?}, bias_offset: {:?} {:?}", i, layer_size, weights_offset, biases_offset, match i { 1 => 0, _ => 1 });
@@ -188,6 +189,8 @@ impl Network for GPUNetwork {
             // println!("{:?} {:?}", i, cl_utils::buf_read(&layer_buf));
             layer_in = layer_out;
         }
+        // self.gpu_proque.finish();
+        // println!("{:?}", st.elapsed());
 
         unsafe {
             let activation_kernel = self.gpu_proque
@@ -290,7 +293,7 @@ impl Network for GPUNetwork {
                 error = self.error(&out, expected);
                 error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
-                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?} {:?}", error, learn_rate, i, epochs, target_error, input, out, expected);
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%)", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0);//target_error, input, out, expected
                     last_print = Instant::now();
                 }
                 self.backward(expected, learn_rate);
@@ -326,7 +329,6 @@ impl Network for GPUNetwork {
                 break;
             }
             i += 1;
-            thread::sleep(Duration::from_millis(10));
         }
         println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
         println!("{:?}", cl_utils::buf_read(&self.gpu_weights));

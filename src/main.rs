@@ -30,7 +30,7 @@ mod network;
 mod gpu_math;
 mod cl_utils;
 
-const SAMPLES: f32 = 100.0;
+const SAMPLES: f32 = 40.0;
 
 fn main() {
     // backprop();
@@ -86,7 +86,7 @@ fn main() {
         let t_output = &t_outputs[i];
         // println!("IN: {:?}, OUT: {:?}, EXPECTED: {:?}", t_input, network.forward(&t_input), t_output);
     }
-    send.send((vec![], network.weights(), network.biases(), network.clone())).unwrap();
+    send.send((vec![], network.weights(), network.biases(), Box::new(network.clone()))).unwrap();
     std::thread::sleep(Duration::from_millis(2000));
 
     network.train(epochs, 0.01, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
@@ -107,7 +107,7 @@ fn main() {
             }
             x+= 1.0;
         }
-        send.send((all, c_net.weights(), c_net.biases(), c_net.clone())).unwrap();
+        send.send((all, c_net.weights(), c_net.biases(), Box::new(c_net.clone()))).unwrap();
     }).unwrap();
     // send.send((vec![], cl_utils::buf_read(&network.CPU_weights), cl_utils::buf_read(&network.CPU_biases), network.clone())).unwrap();
     for i in 0..t_inputs.len() {
@@ -118,20 +118,21 @@ fn main() {
     j.join().expect("TODO: panic message");
 }
 
+type NetInfRecv = Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, Box<Network>)>;
 struct MainScreen {
     inputs: Vec<Vec<f32>>,
     outputs: Vec<Vec<f32>>,
     last_outputs: Vec<(Vec<f32>, Vec<f32>)>,
-    receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, GPUNetwork)>,
+    receive: NetInfRecv,
     network_weights: Vec<f32>,
     network_biases: Vec<f32>,
     network_layers: Vec<(usize, usize, usize)>,
     timer: Instant,
-    network: GPUNetwork,
+    network: Box<dyn Network>,
 }
 
 impl MainScreen {
-    pub unsafe fn new(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, GPUNetwork)>, layers: Vec<(usize, usize, usize)>, network: GPUNetwork) -> Self {
+    pub unsafe fn new<T>(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: NetInfRecv, layers: Vec<(usize, usize, usize)>, network: T) -> Self where T: Network {
         window.fonts.set_font_bytes("ProductSans", read("src/assets/fonts/ProductSans.ttf".replace("/", path::MAIN_SEPARATOR_STR)).unwrap()).load_font("ProductSans", false);
         MainScreen {
             last_outputs: vec![(vec![0.0], vec![0f32]); outputs.len()],
@@ -142,7 +143,7 @@ impl MainScreen {
             network_biases: vec![],
             network_layers: layers,
             timer: Instant::now(),
-            network,
+            network: Box::new(network),
         }
     }
 
@@ -227,7 +228,7 @@ impl ScreenTrait for MainScreen {
         LineWidth(2.0);
         Hint(LINE_SMOOTH_HINT, NICEST);
         // Enable(POINT_SMOOTH);
-        PointSize(1.0);
+        PointSize(3.0);
         // Hint(POINT_SMOOTH_HINT, FASTE);
         // PushMatrix();
         // Translatef(800.0, 0.0, 0.0);
@@ -264,7 +265,7 @@ impl ScreenTrait for MainScreen {
             Vertex2f(400.0+x*20.0*5.0+5.0, y*20.0*5.0+5.0);
         }
         End();
-        self.draw_network(window);
+        // self.draw_network(window);
     }
 
     fn key_press(&mut self, key: Key, code: Scancode, action: Action, mods: Modifiers) {
