@@ -5,15 +5,15 @@ use crate::cl_utils::execute_kernel;
 use crate::network::{Network, shuffle};
 
 fn activate(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
-    // (x.exp() - (-x).exp()) / (x.exp() + (-x).exp())
+    // 1.0 / (1.0 + (-x).exp())
+    (x.exp() - (-x).exp()) / (x.exp() + (-x).exp())
     // x.sin()
     // x
 }
 
 fn activate_derivative(x: f32) -> f32 {
-    x.exp() / (x.exp() + 1.0).powf(2.0)
-    // 1.0 - (activate(x) * activate(x))
+    // x.exp() / (x.exp() + 1.0).powf(2.0)
+    1.0 - (activate(x) * activate(x))
     // x.cos()
     // 1.0
 }
@@ -188,16 +188,6 @@ impl Network for CPUNetwork {
                 let out = self.forward(input).unwrap();
                 let error = self.error(&out, expected);
 
-                if last_error != f32::INFINITY {
-                    let error_dif = error - last_error;
-                    if error_dif < -0.01 {
-                        learn_rate += 0.001;
-                    } else {
-                        learn_rate -= 0.002;
-                    }
-                    learn_rate = learn_rate.min(0.000001).max(0.05);
-                }
-
                 error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
                     println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, input, out, expected);
@@ -218,12 +208,20 @@ impl Network for CPUNetwork {
                     }
                     self.weight_mods.fill(0.0);
                     self.bias_mods.fill(0.0);
+
                     batched = 0;
                 }
 
-                last_error = error;
             }
             error_sum /= inputs.len() as f32;
+
+            if last_error != f32::INFINITY {
+                let dif = 5.0 / (last_error - error_sum) / 2e8;
+                learn_rate += dif;
+                // println!("lear: {}", dif);
+                learn_rate = learn_rate.max(0.00001).min(0.1);
+            }
+            last_error = error_sum;
             if error_sum < target_error {
                 break
             }

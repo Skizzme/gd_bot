@@ -30,6 +30,8 @@ mod network;
 mod gpu_math;
 mod cl_utils;
 
+const SAMPLES: f32 = 100.0;
+
 fn main() {
     // backprop();
     let args: Vec<String> = std::env::args().collect();
@@ -42,7 +44,7 @@ fn main() {
         let arg_val = args[i];
         layers.push(usize::from_str(arg_val).unwrap());
     }
-    let mut network = CPUNetwork::new(layers.clone(), None, None).unwrap();
+    let mut network = GPUNetwork::new(layers.clone(), None, None).unwrap();
     println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights_len().to_formatted_string(&Locale::en), network.biases_len().to_formatted_string(&Locale::en), ((network.weights_len()+network.biases_len())*i32::BITS as usize/8).to_formatted_string(&Locale::en));
     let st = Instant::now();
     // let mut t_inputs: Vec<Vec<f32>> = vec![vec![1.0, -0.87], vec![2.0, 0.2], vec![-1.0, 2.0], vec![0.0, -1.0]];
@@ -95,12 +97,11 @@ fn main() {
         //     n_in += 0.01;
         // }
         // send.send((all, cl_utils::buf_read(&c_net.CPU_weights), cl_utils::buf_read(&c_net.CPU_biases), c_net.clone())).unwrap();
-        let samples = 20f32;
         let mut x = 0f32;
-        while x < samples {
+        while x < SAMPLES {
             let mut y = 0f32;
-            while y < samples {
-                let inp = vec![x/samples, y/samples];
+            while y < SAMPLES {
+                let inp = vec![x/SAMPLES, y/SAMPLES];
                 all.push((inp.clone(), c_net.forward(&inp).unwrap()));
                 y+=1.0;
             }
@@ -121,16 +122,16 @@ struct MainScreen {
     inputs: Vec<Vec<f32>>,
     outputs: Vec<Vec<f32>>,
     last_outputs: Vec<(Vec<f32>, Vec<f32>)>,
-    receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, CPUNetwork)>,
+    receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, GPUNetwork)>,
     network_weights: Vec<f32>,
     network_biases: Vec<f32>,
     network_layers: Vec<(usize, usize, usize)>,
     timer: Instant,
-    network: CPUNetwork,
+    network: GPUNetwork,
 }
 
 impl MainScreen {
-    pub unsafe fn new(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, CPUNetwork)>, layers: Vec<(usize, usize, usize)>, network: CPUNetwork) -> Self {
+    pub unsafe fn new(window: &mut Window, inputs: Vec<Vec<f32>>, outputs: Vec<Vec<f32>>, receive: Receiver<(Vec<(Vec<f32>, Vec<f32>)>, Vec<f32>, Vec<f32>, GPUNetwork)>, layers: Vec<(usize, usize, usize)>, network: GPUNetwork) -> Self {
         window.fonts.set_font_bytes("ProductSans", read("src/assets/fonts/ProductSans.ttf".replace("/", path::MAIN_SEPARATOR_STR)).unwrap()).load_font("ProductSans", false);
         MainScreen {
             last_outputs: vec![(vec![0.0], vec![0f32]); outputs.len()],
@@ -225,9 +226,9 @@ impl ScreenTrait for MainScreen {
         Enable(LINE_SMOOTH);
         LineWidth(2.0);
         Hint(LINE_SMOOTH_HINT, NICEST);
-        Enable(POINT_SMOOTH);
-        PointSize(4.0);
-        Hint(POINT_SMOOTH_HINT, NICEST);
+        // Enable(POINT_SMOOTH);
+        PointSize(1.0);
+        // Hint(POINT_SMOOTH_HINT, FASTE);
         // PushMatrix();
         // Translatef(800.0, 0.0, 0.0);
         // Begin(LINE_STRIP);
@@ -283,18 +284,16 @@ pub fn create_data() -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
     let mut t_inputs: Vec<Vec<f32>> = vec![];
     let mut t_outputs: Vec<Vec<f32>> = vec![];
 
-    let samples = 20f32;
-
     let mut cl_1_i = vec![];
     let mut cl_1_o = vec![];
     let mut cl_2_i = vec![];
     let mut cl_2_o = vec![];
     let mut x = 0f32;
-    while x < samples {
+    while x < SAMPLES {
         let mut y = 0f32;
-        while y < samples {
-            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
-            let inp = vec![x/samples, y/samples];
+        while y < SAMPLES {
+            let classification = if ((((x - SAMPLES / 2.0).powi(2) + (y - SAMPLES / 2.0).powi(2)) as f32).sqrt() > SAMPLES / 3.0) { 1.0 } else { 0.0 };
+            let inp = vec![x/SAMPLES, y/SAMPLES];
             let out = vec![classification, 1.0-classification];
             if classification == 0.0 {
                 cl_1_i.push(inp);
