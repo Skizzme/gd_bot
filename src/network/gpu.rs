@@ -134,6 +134,8 @@ impl Network for GPUNetwork {
 
         // println!("\nInitialized network input {:?}", st.elapsed());
         st = Instant::now();
+        // self.gpu_biases.cmd().fill(0.0, None).enq();
+        // TODO last removed biases. would need to change the kernel calls' "has_biases" back
 
         for i in 1..self.layers.len() {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
@@ -241,6 +243,7 @@ impl Network for GPUNetwork {
                     .build()
                     .expect("failed to build backward kernel");
 
+                // println!("{} {} {}", layer_sensitivities.len(), layer_size, prev_size);
                 execute_kernel(&self.gpu_proque, &back_kernel, (layer_size, prev_size));
 
                 // println!("{:?}", cl_utils::buf_read(&layer_sensitivities));
@@ -272,7 +275,9 @@ impl Network for GPUNetwork {
             let mut error = 0.0;
             let mut error_sum = 0.0;
             shuffle(&mut inputs, &mut outputs);
-            // println!("{:?} {:?}", inputs, outputs);
+            // println!("{:?} {:?}", inputs, outputs);\
+            self.weight_mods.cmd().fill(0.0, None).enq();
+            self.bias_mods.cmd().fill(0.0, None).enq();
             for j in 0..inputs.len() {
                 let input = &inputs[j];
                 let expected = &outputs[j];
@@ -316,7 +321,7 @@ impl Network for GPUNetwork {
                 break;
             }
             i += 1;
-            // thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(10));
         }
         println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
         println!("{:?}", cl_utils::buf_read(&self.gpu_weights));

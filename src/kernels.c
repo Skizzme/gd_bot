@@ -48,34 +48,6 @@ float activate_derivative(float value) {
 //    return cos(value);
 }
 
-__kernel void forward(
-    int apply_activations_in,
-    ulong input_length,
-    ulong layer_len,
-    ulong weights_offset,
-    ulong biases_offset,
-    int has_biases,
-    __constant float* weights,
-    __constant float* biases,
-    __constant float* input,
-    __global float* output
-) {
-    int x = get_global_id(0); // out dims
-    int y = get_global_id(1); // in dims
-    float in = input[y];
-    if (apply_activations_in == 1) {
-//        printf("b %f a %f", in, activate(in));
-        in = activate(in);
-    }
-    int w_ind =(input_length*x)+y + weights_offset;
-    float value = input[y]*weights[w_ind];
-
-    atomicAdd_g_f(&output[x], value);
-    barrier(CLK_GLOBAL_MEM_FENCE);
-    if (y == 0 && has_biases == 1) {
-        atomicAdd_g_f(&output[x], biases[x+biases_offset]);
-    }
-}
 
 __kernel void set_biases(__global float* buffer, __constant float* biases, int offset) {
     int i = get_global_id(0);
@@ -108,41 +80,6 @@ float error_derivative(float actual, float desired) {
 //    return 2.0 * (actual - desired); // prediction
 }
 
-__kernel void backward(
-    ulong input_length,
-    ulong weights_offset,
-    ulong biases_offset,
-    int has_biases,
-    float learn_rate,
-    __global float* inputs,
-    __global float* layer_output,
-    __global float* sensitivities,
-    __global float* weights,
-    __global float* biases,
-    __global float* weight_mods,
-    __global float* bias_mods,
-    __global float* gradients_out
-) {
-    int x = get_global_id(0); // out dims
-    int y = get_global_id(1); // in dims
-    ulong weight_index = (input_length * x) + y + weights_offset;
-    ulong bias_index = x+biases_offset;
-
-    double gradient = activate_derivative(layer_output[x]) * sensitivities[x];
-
-//    double gradient = sensitivities[x];
-
-    float new_weight = weights[weight_index] - learn_rate * activate(inputs[y]) * gradient;
-    weight_mods[weight_index] += new_weight - weights[weight_index];
-
-    if (y == 0 && has_biases == 1) {
-        float new_bias = biases[bias_index] - learn_rate * gradient;
-        bias_mods[bias_index] += new_bias - biases[bias_index];
-    }
-
-    atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
-}
-
 __kernel void multiply(__global float* first, __global float* second, __global float* target) {
     int index = get_global_id(0);
     target[index] = first[index] * second[index];
@@ -171,6 +108,70 @@ __kernel void list_divide_inplace(__global float* top, float bottom) {
 __kernel void activate_and_error_derivative_calc(__global float* values, __global float* desired, __global float* out) {
     int i = get_global_id(0);
     out[i] = error_derivative(activate(values[i]), desired[i]);
+}
+
+__kernel void forward(
+    int apply_activations_in,
+    ulong input_length,
+    ulong layer_len,
+    ulong weights_offset,
+    ulong biases_offset,
+    int has_biases,
+    __constant float* weights,
+    __constant float* biases,
+    __constant float* input,
+    __global float* output
+) {
+    int x = get_global_id(0); // out dims
+    int y = get_global_id(1); // in dims
+    float in = input[y];
+    if (apply_activations_in == 1) {
+//        printf("b %f a %f", in, activate(in));
+        in = activate(in);
+    }
+    int w_ind =(input_length*x)+y + weights_offset;
+    float value = input[y]*weights[w_ind];
+
+    atomicAdd_g_f(&output[x], value);
+    barrier(CLK_GLOBAL_MEM_FENCE);
+    if (y == 0 && has_biases == 1) { // TODO add this to the value float instead of another atomic add
+        atomicAdd_g_f(&output[x], biases[x+biases_offset]);
+    }
+}
+
+__kernel void backward(
+    ulong input_length,
+    ulong weights_offset,
+    ulong biases_offset,
+    int has_biases,
+    float learn_rate,
+    __global float* inputs,
+    __global float* layer_output,
+    __global float* sensitivities,
+    __global float* weights,
+    __global float* biases,
+    __global float* weight_mods,
+    __global float* bias_mods,
+    __global float* gradients_out
+) {
+    int x = get_global_id(0); // out dims
+    int y = get_global_id(1); // in dims
+    ulong weight_index = (input_length * x) + y + weights_offset;
+    ulong bias_index = x+biases_offset;
+
+    double gradient = activate_derivative(layer_output[x]) * sensitivities[x];
+
+//    double gradient = sensitivities[x];
+
+    float new_weight = weights[weight_index] - (learn_rate * activate(inputs[y]) * gradient);
+    weight_mods[weight_index] += new_weight - weights[weight_index];
+
+    if (y == 0 && has_biases == 1) {
+        float new_bias = biases[bias_index] - (learn_rate * gradient);
+        bias_mods[bias_index] += new_bias - biases[bias_index];
+    }
+
+    atomicAdd_g_f(&gradients_out[y], weights[weight_index] * gradient);
 }
 
 // gradient = input * error_derivative(actual_output - desired_output)

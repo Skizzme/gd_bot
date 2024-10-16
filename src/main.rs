@@ -20,7 +20,8 @@ use RustUI::components::window::Window;
 use RustUI::gl_binds::gl30;
 use RustUI::glfw::{Action, Key, Modifiers, Scancode, WindowEvent};
 use RustUI::WindowMode;
-use crate::network::{gpu, Network};
+use crate::network::{Network};
+// use crate::network::cpu::CPUNetwork;
 use crate::network::cpu::CPUNetwork;
 
 mod network;
@@ -129,7 +130,7 @@ fn main() {
     for i in 0..t_inputs.len() {
         let t_input = &t_inputs[i];
         let t_output = &t_outputs[i];
-        println!("IN: {:?}, OUT: {:?}, EXPECTED: {:?}", t_input, network.forward(&t_input), t_output);
+        // println!("IN: {:?}, OUT: {:?}, EXPECTED: {:?}", t_input, network.forward(&t_input), t_output);
     }
     send.send((vec![], network.weights(), network.biases(), network.clone())).unwrap();
     std::thread::sleep(Duration::from_millis(2000));
@@ -141,7 +142,7 @@ fn main() {
         //     all.push((vec![n_in], (network.forward(&vec![n_in]).unwrap())));
         //     n_in += 0.01;
         // }
-        // send.send((all, cl_utils::buf_read(&c_net.gpu_weights), cl_utils::buf_read(&c_net.gpu_biases), c_net.clone())).unwrap();
+        // send.send((all, cl_utils::buf_read(&c_net.CPU_weights), cl_utils::buf_read(&c_net.CPU_biases), c_net.clone())).unwrap();
         let samples = 20f32;
         let mut x = 0f32;
         while x < samples {
@@ -155,7 +156,7 @@ fn main() {
         }
         send.send((all, c_net.weights(), c_net.biases(), c_net.clone())).unwrap();
     }).unwrap();
-    // send.send((vec![], cl_utils::buf_read(&network.gpu_weights), cl_utils::buf_read(&network.gpu_biases), network.clone())).unwrap();
+    // send.send((vec![], cl_utils::buf_read(&network.CPU_weights), cl_utils::buf_read(&network.CPU_biases), network.clone())).unwrap();
     for i in 0..t_inputs.len() {
         let t_input = &t_inputs[i];
         let t_output = &t_outputs[i];
@@ -172,6 +173,7 @@ struct MainScreen {
     network_weights: Vec<f32>,
     network_biases: Vec<f32>,
     network_layers: Vec<(usize, usize, usize)>,
+    timer: Instant,
     network: CPUNetwork,
 }
 
@@ -186,6 +188,7 @@ impl MainScreen {
             network_weights: vec![],
             network_biases: vec![],
             network_layers: layers,
+            timer: Instant::now(),
             network,
         }
     }
@@ -209,7 +212,7 @@ impl MainScreen {
         }
         End();
         for i in 0..self.network_layers.len() {
-            // let out = cl_utils::buf_read(&self.network.gpu_layer_bufs[i]);
+            // let out = cl_utils::buf_read(&self.network.CPU_layer_bufs[i]);
             let (size, w_offset, b_offset) = self.network_layers[i];
             for node in 0..size {
                 let x = (i * hori_mult + 50) as f32;
@@ -218,7 +221,7 @@ impl MainScreen {
                 window.fonts.get_font("ProductSans").unwrap().draw_string(16.0, format!("{} {:.4} {}", bias_index, self.network_biases[bias_index], b_offset), x, y, Color::from_u32(0xff20ffff));
             }
         }
-        // let nw_weights = cl_utils::buf_read(&self.network.gpu_weights);
+        // let nw_weights = cl_utils::buf_read(&self.network.CPU_weights);
         for i in 0..self.network_layers.len() {
             let (size, w_offset, b_offset) = self.network_layers[i];
             for node in 0..size {
@@ -260,6 +263,10 @@ impl ScreenTrait for MainScreen {
                 (self.last_outputs, self.network_weights, self.network_biases, self.network) = values;
             }
             Err(_) => {}
+        }
+        if self.timer.elapsed().as_secs_f32() > 1.0 {
+            // println!("{:?}", self.network_weights);
+            self.timer = Instant::now();
         }
         Disable(TEXTURE_2D);
         Enable(BLEND);
