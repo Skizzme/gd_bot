@@ -88,12 +88,26 @@ impl GPUNetwork {
         st = Instant::now();
         // println!("\nStoring network on GPU...");
         let weight_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, weight_offset);
-        // Init network's weights randomly using GPU
-        cl_utils::randomize_buffer(&weight_buf, 256, 2.0, &pro_que);
+        match init_weights {
+            None => {
+                // Init network's weights randomly using GPU
+                cl_utils::randomize_buffer(&weight_buf, 256, 2.0, &pro_que);
+            }
+            Some(weights) => {
+                cl_utils::buf_write(&weight_buf, &weights);
+            }
+        }
 
         let biases_buf: Buffer<f32> = cl_utils::new_buffer(&pro_que, bias_offset);
-        // Init network's biases randomly using GPU
-        cl_utils::randomize_buffer(&biases_buf, 256, 80.0, &pro_que);
+        match init_biases {
+            None => {
+                // Init network's biases randomly using GPU
+                cl_utils::randomize_buffer(&biases_buf, 256, 80.0, &pro_que);
+            }
+            Some(biases) => {
+                cl_utils::buf_write(&weight_buf, &biases);
+            }
+        }
 
         // println!("{:?}", cl_utils::buf_read(&weight_buf));
 
@@ -214,15 +228,6 @@ impl Network for GPUNetwork {
 
                 let layer_sensitivities = &self.gpu_layer_sensitivities[i-1];
                 layer_sensitivities.cmd().fill(0.0, None).enq();
-
-                // println!("{:?} {:?} {:?}", cl_utils::buf_read(&layer_sensitivities), layer_size, prev_size);
-
-                // let in_buf = match i {
-                //     0 => {
-                //         &self.gpu_layer_bufs[i-1]
-                //     },
-                //     1 => &self.gpu_layer_bufs[i-1],
-                // }
 
                 let st = Instant::now();
                 let back_kernel = self.gpu_proque

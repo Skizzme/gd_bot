@@ -23,7 +23,7 @@ pub fn buf_read<T: ocl::OclPrm>(buffer: &Buffer<T>) -> Vec<T> {
     target
 }
 
-pub fn buf_write<T: ocl::OclPrm, W:  for<'a> Into<WriteSrc<'a, T>>>(buffer: &Buffer<T>, values: W) {
+pub fn buf_write<'c, 'd, T, W>(buffer: &Buffer<T>, values: W) where 'd: 'c, W: Into<WriteSrc<'d, T>>, T: ocl::OclPrm {
     buffer.write(values).enq().expect("Failed to write network inputs");
 }
 

@@ -169,14 +169,15 @@ impl Network for CPUNetwork {
         }
     }
 
-    fn train<T: Into<Option<f32>>, F>(&mut self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, learn_rate: f32, mut epoch_call_back: F) -> Result<f32, String> where F: FnMut(&mut Self) {
-
+    fn train<T: Into<Option<f32>>, F>(&mut self, epochs: u32, target_error: T, inputs: &mut Vec<Vec<f32>>, outputs: &mut Vec<Vec<f32>>, mut learn_rate: f32, mut epoch_call_back: F) -> Result<f32, String> where F: FnMut(&mut Self) {
+        let target_error = target_error.into().unwrap();
         let mut inputs = inputs.clone();
         let mut outputs = outputs.clone();
 
         let mut last_print = Instant::now();
         let mut i = 0;
         let mut batched = 0;
+        let mut last_error = f32::INFINITY;
         while i < epochs {
             shuffle(&mut inputs, &mut outputs);
             let mut error_sum = 0.0;
@@ -186,6 +187,17 @@ impl Network for CPUNetwork {
 
                 let out = self.forward(input).unwrap();
                 let error = self.error(&out, expected);
+
+                if last_error != f32::INFINITY {
+                    let error_dif = error - last_error;
+                    if error_dif < -0.01 {
+                        learn_rate += 0.001;
+                    } else {
+                        learn_rate -= 0.002;
+                    }
+                    learn_rate = learn_rate.min(0.000001).max(0.05);
+                }
+
                 error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
                     println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?} {:?} {:?}", error, learn_rate, i, epochs, input, out, expected);
@@ -208,15 +220,20 @@ impl Network for CPUNetwork {
                     self.bias_mods.fill(0.0);
                     batched = 0;
                 }
+
+                last_error = error;
             }
             error_sum /= inputs.len() as f32;
+            if error_sum < target_error {
+                break
+            }
             if i % 50 == 0 {
                 epoch_call_back(self);
                 println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{}", error_sum, learn_rate, i, epochs);
             }
 
             i += 1;
-        };
+        }
 
         Ok(0.0)
     }

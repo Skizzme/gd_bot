@@ -22,7 +22,9 @@ use RustUI::glfw::{Action, Key, Modifiers, Scancode, WindowEvent};
 use RustUI::WindowMode;
 use crate::network::{Network};
 // use crate::network::cpu::CPUNetwork;
-use crate::network::cpu::CPUNetwork;
+use crate::network::*;
+use crate::network::gpu::*;
+use crate::network::cpu::*;
 
 mod network;
 mod gpu_math;
@@ -45,58 +47,8 @@ fn main() {
     let st = Instant::now();
     // let mut t_inputs: Vec<Vec<f32>> = vec![vec![1.0, -0.87], vec![2.0, 0.2], vec![-1.0, 2.0], vec![0.0, -1.0]];
     // let mut t_outputs: Vec<Vec<f32>> = vec![vec![0.0, 0.25], vec![0.25, -0.6], vec![0.85, -0.2], vec![-0.25, 0.0]];
-    let mut t_inputs: Vec<Vec<f32>> = vec![];
-    let mut t_outputs: Vec<Vec<f32>> = vec![];
 
-    let samples = 20f32;
-
-    let samples = 20f32;
-    // for i in 0..samples {
-    //     let i = i as f32;
-    //     // println!("{}", ((i/samples as f32)*2.0*PI).sin());
-    //     t_inputs.push(vec![i/samples as f32]);
-    //     let degrees = (i/samples as f32)*2.0*PI;
-    //     t_outputs.push(vec![degrees.sin()]); // + degrees.sin().powi(2)
-    // }
-
-    let mut cl_1_i = vec![];
-    let mut cl_1_o = vec![];
-    let mut cl_2_i = vec![];
-    let mut cl_2_o = vec![];
-    let mut x = 0f32;
-    while x < samples {
-        let mut y = 0f32;
-        while y < samples {
-            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
-            let inp = vec![x/samples, y/samples];
-            let out = vec![classification, 1.0-classification];
-            if classification == 0.0 {
-                cl_1_i.push(inp);
-                cl_1_o.push(out); // + degrees.sin().powi(2)
-            } else {
-                cl_2_i.push(inp);
-                cl_2_o.push(out); // + degrees.sin().powi(2)
-            }
-            y+=1.0;
-        }
-        x+= 1.0;
-    }
-    network::shuffle(&mut cl_1_i, &mut cl_1_o);
-    network::shuffle(&mut cl_2_i, &mut cl_2_o);
-    if cl_2_i.len() > cl_1_i.len() {
-        for i in 0..(cl_2_i.len()-cl_1_i.len()) {
-            cl_2_i.swap_remove(0);
-            cl_2_o.swap_remove(0);
-        }
-    }
-
-    t_inputs.append(&mut cl_1_i);
-    t_inputs.append(&mut cl_2_i);
-    t_outputs.append(&mut cl_1_o);
-    t_outputs.append(&mut cl_2_o);
-
-    println!("CL1: {:?} {:?}", cl_1_i, cl_1_o);
-    println!("CL2: {:?} {:?}", cl_2_i, cl_2_o);
+    let (t_inputs, t_outputs) = create_data();
 
     let s_t_inputs = t_inputs.clone();
     let s_t_outputs = t_outputs.clone();
@@ -135,7 +87,7 @@ fn main() {
     send.send((vec![], network.weights(), network.biases(), network.clone())).unwrap();
     std::thread::sleep(Duration::from_millis(2000));
 
-    network.train(epochs, 0.0000005, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
+    network.train(epochs, 0.01, &mut t_inputs.clone(), &mut t_outputs.clone(), learn_rate, |c_net| {
         let mut all = vec![];
         // let mut n_in = 0.0 as f32;
         // while n_in < 1.0 {
@@ -325,6 +277,51 @@ impl ScreenTrait for MainScreen {
     fn elements(&self) -> Vec<Element> {
         vec![]
     }
+}
+
+pub fn create_data() -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
+    let mut t_inputs: Vec<Vec<f32>> = vec![];
+    let mut t_outputs: Vec<Vec<f32>> = vec![];
+
+    let samples = 20f32;
+
+    let mut cl_1_i = vec![];
+    let mut cl_1_o = vec![];
+    let mut cl_2_i = vec![];
+    let mut cl_2_o = vec![];
+    let mut x = 0f32;
+    while x < samples {
+        let mut y = 0f32;
+        while y < samples {
+            let classification = if ((((x - samples / 2.0).powi(2) + (y - samples / 2.0).powi(2)) as f32).sqrt() > samples / 3.0) { 1.0 } else { 0.0 };
+            let inp = vec![x/samples, y/samples];
+            let out = vec![classification, 1.0-classification];
+            if classification == 0.0 {
+                cl_1_i.push(inp);
+                cl_1_o.push(out); // + degrees.sin().powi(2)
+            } else {
+                cl_2_i.push(inp);
+                cl_2_o.push(out); // + degrees.sin().powi(2)
+            }
+            y+=1.0;
+        }
+        x+= 1.0;
+    }
+    network::shuffle(&mut cl_1_i, &mut cl_1_o);
+    network::shuffle(&mut cl_2_i, &mut cl_2_o);
+    if cl_2_i.len() > cl_1_i.len() {
+        for i in 0..(cl_2_i.len()-cl_1_i.len()) {
+            cl_2_i.swap_remove(0);
+            cl_2_o.swap_remove(0);
+        }
+    }
+
+    t_inputs.append(&mut cl_1_i);
+    t_inputs.append(&mut cl_2_i);
+    t_outputs.append(&mut cl_1_o);
+    t_outputs.append(&mut cl_2_o);
+
+    (t_inputs, t_outputs)
 }
 
 pub fn error_derivative(actual: f32, desired: f32) -> f32 {

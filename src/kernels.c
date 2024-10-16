@@ -124,17 +124,17 @@ __kernel void forward(
 ) {
     int x = get_global_id(0); // out dims
     int y = get_global_id(1); // in dims
+    int w_ind = (input_length * x) + y + weights_offset;
+
     float in = input[y];
     if (apply_activations_in == 1) {
-//        printf("b %f a %f", in, activate(in));
         in = activate(in);
     }
-    int w_ind =(input_length*x)+y + weights_offset;
-    float value = input[y]*weights[w_ind];
 
-    atomicAdd_g_f(&output[x], value);
+    atomicAdd_g_f(&output[x], in*weights[w_ind]);
+
     barrier(CLK_GLOBAL_MEM_FENCE);
-    if (y == 0 && has_biases == 1) { // TODO add this to the value float instead of another atomic add
+    if (y == 0) { // TODO add this to the value float instead of another atomic add
         atomicAdd_g_f(&output[x], biases[x+biases_offset]);
     }
 }
@@ -161,12 +161,10 @@ __kernel void backward(
 
     double gradient = activate_derivative(layer_output[x]) * sensitivities[x];
 
-//    double gradient = sensitivities[x];
-
     float new_weight = weights[weight_index] - (learn_rate * activate(inputs[y]) * gradient);
     weight_mods[weight_index] += new_weight - weights[weight_index];
 
-    if (y == 0 && has_biases == 1) {
+    if (y == 0) {
         float new_bias = biases[bias_index] - (learn_rate * gradient);
         bias_mods[bias_index] += new_bias - biases[bias_index];
     }
