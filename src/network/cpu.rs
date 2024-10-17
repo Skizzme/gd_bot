@@ -25,7 +25,7 @@ pub fn random_with_capacity(capacity: usize) -> Vec<f32> {
         // let val = random::<f32>();
         out.push(val / 10.0);
     }
-    println!("{:?}", out);
+    // println!("{:?}", out);
     out
 }
 
@@ -42,7 +42,7 @@ pub struct CPUNetwork {
 }
 
 impl CPUNetwork {
-    pub fn new(layers: Vec<usize>, init_weights: Option<Vec<f32>>, init_biases: Option<Vec<f32>>) -> Result<Self, String> {
+    pub fn new(layers: Vec<usize>, init_biases: Option<Vec<f32>>, init_weights: Option<Vec<f32>>) -> Result<Self, String> {
         let mut st = Instant::now();
 
         let mut network_layers = vec![];
@@ -69,7 +69,7 @@ impl CPUNetwork {
             // println!("LAYER SIZE {} {}", layer.len(), layer_size);
             layer_outputs.push(layer);
 
-            println!("{} {} {}", i, bias_offset, weight_offset);
+            // println!("{} {} {}", i, bias_offset, weight_offset);
             network_layers.push((layer_size, weight_offset, bias_offset));
             let mut senses = Vec::with_capacity(layer_size);
             for j in 0..senses.capacity() {
@@ -84,10 +84,14 @@ impl CPUNetwork {
             layer_inputs = layer_size;
         }
 
+        let weights = init_weights.unwrap_or_else(|| random_with_capacity(weight_offset));
+        let biases = init_biases.unwrap_or_else(|| random_with_capacity(bias_offset));
+        println!("{} {}", weights.len(), weight_offset);
+
         Ok(CPUNetwork {
             layers: network_layers,
-            weights: random_with_capacity(weight_offset),
-            biases: random_with_capacity(bias_offset),
+            weights,
+            biases,
             layer_bufs: layer_outputs,
             layer_sensitivities,
             out_buf: random_with_capacity(layer_inputs),
@@ -122,7 +126,7 @@ impl Network for CPUNetwork {
                 }
             }
 
-            layer_in_size = self.layers[i].0;
+            layer_in_size = layer_size;
         }
 
         let last = self.layer_bufs.last().unwrap();
@@ -190,7 +194,7 @@ impl Network for CPUNetwork {
 
                 error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
-                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%)", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0);//target_error, input, out, expected
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%) {:?} {:?} {:?}", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0, target_error, out, expected);//target_error, input, out, expected
                     last_print = Instant::now();
                 }
 
@@ -222,17 +226,18 @@ impl Network for CPUNetwork {
                 learn_rate = learn_rate.max(0.00001).min(0.1);
             }
             last_error = error_sum;
-            if error_sum < target_error {
-                break
-            }
+            // if error_sum < target_error {
+            //     break
+            // }
             if i % 50 == 0 {
                 epoch_call_back(self);
-                println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{}", error_sum, learn_rate, i, epochs);
             }
+            println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{}", error_sum, learn_rate, i, epochs);
 
             i += 1;
         }
-
+        self.save();
+        println!("Network training completed.\n  Completed-Epochs: {}\n  Final-Error: {}\n", i, last_error);
         Ok(0.0)
     }
 

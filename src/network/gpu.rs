@@ -1,6 +1,6 @@
 
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{fs, thread};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use num_format::Locale::{te, wo};
 
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
@@ -41,7 +41,7 @@ pub struct GPUNetwork {
 }
 
 impl GPUNetwork {
-    pub fn new(layers: Vec<usize>, init_weights: Option<Vec<f32>>, init_biases: Option<Vec<f32>>) -> Result<Self, String> {
+    pub fn new(layers: Vec<usize>, init_biases: Option<Vec<f32>>, init_weights: Option<Vec<f32>>) -> Result<Self, String> {
         let mut st = Instant::now();
         // println!("Creating network...");
         let src = include_str!("../kernels.c");
@@ -105,7 +105,7 @@ impl GPUNetwork {
                 cl_utils::randomize_buffer(&biases_buf, 256, 80.0, &pro_que);
             }
             Some(biases) => {
-                cl_utils::buf_write(&weight_buf, &biases);
+                cl_utils::buf_write(&biases_buf, &biases);
             }
         }
 
@@ -167,7 +167,6 @@ impl Network for GPUNetwork {
                 .arg(layer_size as u64)
                 .arg(weights_offset as u64)
                 .arg(biases_offset as u64)
-                .arg(if (i == self.layers.len()-1) { 0 } else { 1 })
                 .arg(&self.gpu_weights)
                 .arg(&self.gpu_biases)
                 .arg(layer_in)
@@ -238,7 +237,6 @@ impl Network for GPUNetwork {
                     .arg(prev_size as u64) // Input value length
                     .arg(weight_offset as u64)
                     .arg(bias_offset as u64)
-                    .arg(if (i == self.layers.len()-1) { 0 } else { 1 })
                     .arg(learn_rate)
                     .arg(&self.gpu_layer_bufs[i-1]) // Input values
                     .arg(&self.gpu_layer_bufs[i]) // Output values
@@ -281,7 +279,8 @@ impl Network for GPUNetwork {
         let mut batch_complete = 0;
         while i < epochs {
             let mut error = 0.0;
-            let mut error_sum = 0.0;
+            let mut epoch_error_sum = 0.0;
+            let mut batch_error_sum = 0.0;
             shuffle(&mut inputs, &mut outputs);
             // println!("{:?} {:?}", inputs, outputs);\
             self.weight_mods.cmd().fill(0.0, None).enq();
@@ -291,9 +290,10 @@ impl Network for GPUNetwork {
                 let expected = &outputs[j];
                 let out = self.forward(input).unwrap();
                 error = self.error(&out, expected);
-                error_sum += error;
+                epoch_error_sum += error;
+                batch_error_sum += error;
                 if last_print.elapsed().as_secs_f32() > 0.2 {
-                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%)", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0);//target_error, input, out, expected
+                    println!("SAMPLE Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} ({:.2}%) {:?} {:?} {:?}", error, learn_rate, i, epochs, (j as f32 / inputs.len() as f32) * 100.0, target_error, out, expected);//target_error, input, out, expected
                     last_print = Instant::now();
                 }
                 self.backward(expected, learn_rate);
@@ -304,34 +304,35 @@ impl Network for GPUNetwork {
                     gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &self.bias_mods, batch_size as f32);
                     self.weight_mods.cmd().fill(0.0, None).enq();
                     self.bias_mods.cmd().fill(0.0, None).enq();
+
+                    batch_error_sum /= batch_size as f32;
+                    if last_error != f32::INFINITY {
+                        let dif = 5.0 / (last_error - batch_error_sum) / 2e8;
+                        learn_rate += dif;
+                        // println!("lear: {}", dif);
+                        learn_rate = learn_rate.max(0.00001).min(0.1);
+                    }
+                    last_error = batch_error_sum;
+
                     batch_complete = 0;
                 }
             }
-            // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
-            // println!("{:?}", cl_utils::buf_read(&weight_mods));
-            // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_weights, &weight_mods, inputs.len() as f32);
-            // gpu_math::div_second_and_add(&self.gpu_proque, &self.gpu_biases, &bias_mods, inputs.len() as f32);
-            // weight_mods.cmd().fill(0.0, None).enq();
-            // bias_mods.cmd().fill(0.0, None).enq();
-            error_sum /= inputs.len() as f32 / 2.0;
-            // learn_rate += (last_error - error_sum) / 5.0;
-            // learn_rate += 5.0 / (last_error - error_sum) / 4000.0;
-            // // println!("lear: {}", 5.0 / (last_error - error_sum) / 4000.0);
-            // learn_rate = learn_rate.max(0.00001).min(0.1);
-            last_error = error_sum;
+
+            epoch_error_sum /= inputs.len() as f32;
             if i % 5 == 0 {
                 epoch_call_back(self);
             }
-            println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", error_sum, learn_rate, i, epochs, target_error);
+            println!("EPOCH  Error: {:.8}, Learn-Rate: {:.8}, Epoch: {}/{} {:?}", epoch_error_sum, learn_rate, i, epochs, target_error);
 
-            if target_error.is_some() && error_sum <= target_error.unwrap() {
-                last_error = error_sum;
+            if target_error.is_some() && epoch_error_sum <= target_error.unwrap() {
+                last_error = epoch_error_sum;
                 break;
             }
             i += 1;
         }
-        println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
-        println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
+        // println!("{:?}", cl_utils::buf_read(&self.gpu_biases));
+        // println!("{:?}", cl_utils::buf_read(&self.gpu_weights));
+        self.save();
         println!("Network training completed.\n  Completed-Epochs: {}\n  Final-Error: {}\n", i, last_error);
         return Ok(0.0);
     }
