@@ -11,7 +11,7 @@ use num_format::Locale::{te, wo};
 use ocl::{Buffer, OclPrm, ProQue, SpatialDims};
 use ocl::enums::WriteSrc;
 use rand::{random, Rng, thread_rng};
-use crate::{cl_utils, gpu_math};
+use crate::{BytesReader, cl_utils, gpu_math};
 use crate::cl_utils::{calc_ws, execute_kernel};
 use num_format::{Locale, ToFormattedString};
 use ocl::core::OclNum;
@@ -37,23 +37,25 @@ fn gen_index<R: Rng + ?Sized>(rng: &mut R, ubound: usize) -> usize {
 pub fn read_network(path: impl ToString) -> (Vec<usize>, Vec<f32>, Vec<f32>) {
     let mut index = 0;
     let mut bytes = fs::read(path.to_string()).unwrap();
+    let mut reader = BytesReader::new(bytes);
 
-    let layer_count = bytes.read_usize();
+    let layer_count = reader.next_usize();
     let mut layers = Vec::with_capacity(layer_count);
     for i in 0..layer_count {
-        layers.push(bytes.read_usize());
+        layers.push(reader.next_usize());
     }
 
-    let biases_len = bytes.read_usize();
+    let biases_len = reader.next_usize();
     let mut biases = Vec::with_capacity(biases_len);
     for i in 0..biases_len {
-        biases.push(bytes.read_f32());
+        biases.push(reader.next_f32());
     }
 
-    let weights_len = bytes.read_usize();
+    let weights_len = reader.next_usize();
     let mut weights = Vec::with_capacity(weights_len);
+    println!("; {}", weights_len);
     for i in 0..weights_len {
-        weights.push(bytes.read_f32());
+        weights.push(reader.next_f32());
     }
 
     (layers, biases, weights)
@@ -73,7 +75,7 @@ pub trait Network {
     fn layer_bufs(&self) -> Vec<Vec<f32>>;
     fn layer_sensitivities(&self) -> Vec<Vec<f32>>;
     fn out_buf(&self) -> Vec<f32>;
-    fn save(&mut self) {
+    fn save(&mut self, path: impl ToString) {
         // let biases = cl_utils::buf_read(&self.gpu_biases);
         // let weights = cl_utils::buf_read(&self.gpu_weights);
         let biases = self.biases();
@@ -93,48 +95,26 @@ pub trait Network {
         for v in weights {
             bytes.write_f32(v);
         }
-        fs::write(format!("{}.net", UNIX_EPOCH.elapsed().unwrap().as_millis()), bytes);
+        fs::write(path.to_string(), bytes);
     }
 }
 
 trait UsizeIO {
     fn write_usize(&mut self, v: usize);
-    fn read_usize(&mut self) -> usize;
 }
 
 impl UsizeIO for Vec<u8> {
     fn write_usize(&mut self, v: usize) {
         v.to_be_bytes().iter().for_each(|b| self.push(*b));
     }
-
-    fn read_usize(&mut self) -> usize {
-        let mut biases_len: [u8; 8] = [0u8; 8];
-        let mut i = 0;
-        for byte in self.drain(0..8) {
-            biases_len[i] = byte;
-            i += 1;
-        }
-        usize::from_be_bytes(biases_len)
-    }
 }
 
 trait F32IO {
     fn write_f32(&mut self, v: f32);
-    fn read_f32(&mut self) -> f32;
 }
 
 impl F32IO for Vec<u8> {
     fn write_f32(&mut self, v: f32) {
         v.to_be_bytes().iter().for_each(|b| self.push(*b));
-    }
-
-    fn read_f32(&mut self) -> f32 {
-        let mut biases_len: [u8; 4] = [0u8; 4];
-        let mut i = 0;
-        for byte in self.drain(0..4) {
-            biases_len[i] = byte;
-            i += 1;
-        }
-        f32::from_be_bytes(biases_len)
     }
 }

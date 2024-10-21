@@ -28,7 +28,7 @@ use crate::network::cpu::*;
 type TNetwork = CPUNetwork;
 const SAMPLES: f32 = 20.0;
 pub fn run() {
-    let (epochs, learn_rate, layers) = get_network_args();
+    let (epochs, learn_rate, layers) = get_network_args(None);
     // backprop();
     let mut network = TNetwork::new(layers.clone(), None, None).unwrap();
     println!("Total weights: {}, Total biases: {}, Total mem: {}", network.weights_len().to_formatted_string(&Locale::en), network.biases_len().to_formatted_string(&Locale::en), ((network.weights_len()+network.biases_len())*i32::BITS as usize/8).to_formatted_string(&Locale::en));

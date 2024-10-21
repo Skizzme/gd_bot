@@ -1,17 +1,17 @@
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 use rand::{random, Rng};
 use crate::cl_utils;
 use crate::cl_utils::execute_kernel;
 use crate::network::{Network, shuffle};
 
-fn activate(x: f32) -> f32 {
+pub fn activate(x: f32) -> f32 {
     // 1.0 / (1.0 + (-x).exp())
     (x.exp() - (-x).exp()) / (x.exp() + (-x).exp())
     // x.sin()
     // x
 }
 
-fn activate_derivative(x: f32) -> f32 {
+pub fn activate_derivative(x: f32) -> f32 {
     // x.exp() / (x.exp() + 1.0).powf(2.0)
     1.0 - (activate(x) * activate(x))
     // x.cos()
@@ -236,7 +236,7 @@ impl Network for CPUNetwork {
 
             i += 1;
         }
-        self.save();
+        self.save(format!("{}.net", UNIX_EPOCH.elapsed().unwrap().as_millis()));
         println!("Network training completed.\n  Completed-Epochs: {}\n  Final-Error: {}\n", i, last_error);
         Ok(0.0)
     }
