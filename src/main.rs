@@ -60,11 +60,23 @@ impl BytesReader {
         f32::from_be_bytes(self.buf_4)
     }
 
+    pub fn ended(&self) -> bool {
+        self.index >= self.bytes.len()
+    }
+
     pub fn next_usize(&mut self) -> usize {
         for i in 0..8 {
             self.buf_8[i] = self.bytes[self.index];
             self.index += 1;
         }
         usize::from_be_bytes(self.buf_8)
+    }
+
+    pub fn next_i32(&mut self) -> i32 {
+        for i in 0..4 {
+            self.buf_4[i] = self.bytes[self.index];
+            self.index += 1;
+        }
+        i32::from_be_bytes(self.buf_4)
     }
 }

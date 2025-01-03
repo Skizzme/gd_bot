@@ -32,6 +32,7 @@ pub struct GPUNetwork {
     // Individual output buffers for each layer, so each layer can have different sizes
     // Inputs to next layer will be outputs of last layer
     gpu_layer_bufs: Vec<Buffer<f32>>,
+    gpu_activated_bufs: Vec<Buffer<f32>>,
     // Stores a buffer on the GPU for each layer's sensitivities/gradients
     // Only used for back propagation
     gpu_layer_sensitivities: Vec<Buffer<f32>>,
@@ -62,11 +63,13 @@ impl GPUNetwork {
 
         let mut network_layers = vec![];
         let mut layer_buffers = vec![];
+        let mut activated_buffers = vec![];
         let mut layer_sensitivities = vec![];
 
         let mut layer_inputs = *layers.get(0).unwrap();
         // Add input layer, but since it isn't a real layer it doesn't have weights or biases
         layer_buffers.push(cl_utils::new_buffer(&pro_que, layer_inputs));
+        activated_buffers.push(cl_utils::new_buffer(&pro_que, layer_inputs));
         network_layers.push((layers[0], 0, 0));
 
         let mut weight_offset = 0;
@@ -75,8 +78,8 @@ impl GPUNetwork {
         for i in 1..layers.len() {
             let layer_size = *layers.get(i).unwrap();
 
-            let layer: Buffer<f32> = cl_utils::new_buffer(&pro_que, layer_size);
-            layer_buffers.push(layer);
+            layer_buffers.push(cl_utils::new_buffer(&pro_que, layer_size));
+            activated_buffers.push(cl_utils::new_buffer(&pro_que, layer_size));
 
             println!("{} {} {}", i, bias_offset, weight_offset);
             network_layers.push((layer_size, weight_offset, bias_offset));
@@ -131,6 +134,7 @@ impl GPUNetwork {
             gpu_weights: weight_buf,
             gpu_biases: biases_buf,
             gpu_layer_bufs: layer_buffers,
+            gpu_activated_bufs: activated_buffers,
             gpu_layer_sensitivities: layer_sensitivities,
             gpu_out_buf,
             gpu_target_buf,
@@ -174,7 +178,9 @@ impl Network for GPUNetwork {
                     .arg(&self.gpu_weights)
                     .arg(&self.gpu_biases)
                     .arg(layer_in)
+                    .arg(&self.gpu_activated_bufs[i-1])
                     .arg(layer_out)
+                    .arg(&self.gpu_activated_bufs[i])
                     .build()
                     .unwrap();
 
@@ -360,7 +366,6 @@ impl Network for GPUNetwork {
         return Ok(0.0);
     }
 
-    // TODO: make this gpu accelerated if necessary
     fn error(&mut self, values: &Vec<f32>, target: &Vec<f32>) -> f32 {
         let mut error = 0.0;
         for i in 0..values.len() {

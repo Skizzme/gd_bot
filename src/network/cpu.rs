@@ -35,6 +35,7 @@ pub struct CPUNetwork {
     pub weights: Vec<f32>,
     pub biases: Vec<f32>,
     pub layer_bufs: Vec<Vec<f32>>,
+    activated_bufs: Vec<Vec<f32>>,
     pub layer_sensitivities: Vec<Vec<f32>>,
     pub out_buf: Vec<f32>,
     weight_mods: Vec<f32>,
@@ -47,13 +48,16 @@ impl CPUNetwork {
 
         let mut network_layers = vec![];
         let mut layer_outputs = vec![];
+        let mut activated_outputs = vec![];
         let mut layer_sensitivities = vec![];
 
         let mut layer_inputs = *layers.get(0).unwrap();
         // Add input layer, but since it isn't a real layer it doesn't have weights or biases
         network_layers.push((layers[0], 0, 0));
         layer_sensitivities.push(vec![0.0f32; layers[0]]);
+
         layer_outputs.push(Vec::with_capacity(layer_inputs));
+        activated_outputs.push(Vec::with_capacity(layer_inputs));
 
         let mut weight_offset = 0;
         let mut bias_offset = layers[0];
@@ -65,11 +69,10 @@ impl CPUNetwork {
             for i in 0..layer_size {
                 layer.push(0.0);
             }
-            // layer.fill(0.0);
-            // println!("LAYER SIZE {} {}", layer.len(), layer_size);
-            layer_outputs.push(layer);
 
-            // println!("{} {} {}", i, bias_offset, weight_offset);
+            layer_outputs.push(layer.clone());
+            activated_outputs.push(layer);
+
             network_layers.push((layer_size, weight_offset, bias_offset));
             let mut senses = Vec::with_capacity(layer_size);
             for j in 0..senses.capacity() {
@@ -93,6 +96,7 @@ impl CPUNetwork {
             weights,
             biases,
             layer_bufs: layer_outputs,
+            activated_bufs: activated_outputs,
             layer_sensitivities,
             out_buf: random_with_capacity(layer_inputs),
             weight_mods: random_with_capacity(weight_offset),
@@ -114,28 +118,34 @@ impl Network for CPUNetwork {
         for i in 1..self.layers.len() {
             let (layer_size, weights_offset, biases_offset) = self.layers[i];
 
-            for x in 0..layer_size {
+            let mut x = 0;
+            while x < layer_size {
                 self.layer_bufs[i][x] = self.biases[biases_offset+x];
-                for y in 0..layer_in_size {
+                let mut y = 0;
+                while y < layer_in_size {
                     let weight_index = (layer_in_size * x) + y + weights_offset;
-                    let mut in_value = self.layer_bufs[i-1][y];
-                    if i != 1 {
-                        in_value = activate(in_value);
-                    }
+                    let mut in_value = if i == 1 {
+                        self.layer_bufs[i-1][y]
+                    } else {
+                        self.activated_bufs[i-1][y]
+                    };
                     self.layer_bufs[i][x] += self.weights[weight_index] * in_value;
+                    y += 1
                 }
+                self.activated_bufs[i][x] = activate(self.layer_bufs[i][x]);
+                x += 1;
             }
 
             layer_in_size = layer_size;
         }
 
-        let last = self.layer_bufs.last().unwrap();
-        self.out_buf = Vec::with_capacity(last.len());
-        for i in 0..last.len() {
-            self.out_buf.push(activate(last[i]));
-        }
+        // let last = self.layer_bufs.last().unwrap();
+        // self.out_buf = Vec::with_capacity(last.len());
+        // for i in 0..last.len() {
+        //     self.out_buf.push(activate(last[i]));
+        // }
 
-        Ok(self.out_buf.clone())
+        Ok(self.activated_bufs.last().unwrap().clone())
     }
 
     fn backward(&mut self, target: &Vec<f32>, learn_rate: f32) {

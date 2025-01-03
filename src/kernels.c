@@ -119,7 +119,9 @@ __kernel void forward(
     __constant float* weights,
     __constant float* biases,
     __constant float* input,
-    __global float* output
+    __constant float* activated_input,
+    __global float* output,
+    __global float* activated_output
 ) {
     int x = get_global_id(0); // out dims
     int y = get_global_id(1); // in dims
@@ -127,7 +129,7 @@ __kernel void forward(
 
     float in = input[y];
     if (apply_activations_in == 1) {
-        in = activate(in);
+        in = activated_input[y];
     }
 
     atomicAdd_g_f(&output[x], in*weights[w_ind]);
@@ -136,6 +138,7 @@ __kernel void forward(
     if (y == 0) { // TODO add this to the value float instead of another atomic add
         atomicAdd_g_f(&output[x], biases[x+biases_offset]);
     }
+    activated_output[x] = activate(output[x]);
 }
 
 __kernel void backward(
